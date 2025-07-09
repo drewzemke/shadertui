@@ -42,7 +42,7 @@ shadertui --max-fps 30 example.wgsl
 ### Shader Interface
 Users write complete WGSL compute shaders with this structure:
 ```wgsl
-@group(0) @binding(0) var<storage, read_write> output: array<vec3<f32>>;
+@group(0) @binding(0) var<storage, read_write> output: array<vec4<f32>>;
 @group(0) @binding(1) var<uniform> uniforms: Uniforms;
 
 struct Uniforms {
@@ -72,6 +72,7 @@ When enabled via `--perf`, displays in top row of terminal:
 - **Frame drops**: Count of dropped frames due to terminal bottleneck
 
 ### Error Handling
+- **No `unwraps`**: Error cases of `Results` should be meaningfully handled
 - **Compilation errors**: Clear screen and display error message in terminal
 - **No fallbacks**: Application shows errors directly, encouraging users to fix issues
 - **File watching**: Simple file change detection with basic stability check
@@ -227,7 +228,6 @@ shadertui --max-fps 30 battery_friendly.wgsl
 - [ ] Shader template system for common patterns
 - [ ] Live uniform editing via keyboard shortcuts
 - [ ] Shader validation and better error messages
-- [ ] Built-in shader examples and tutorials
 
 ### Performance Optimizations
 - [ ] Lock-free ring buffer for thread communication
@@ -235,17 +235,9 @@ shadertui --max-fps 30 battery_friendly.wgsl
 - [ ] GPU timing profiling and optimization suggestions
 - [ ] Memory usage monitoring and optimization
 
-### Development Tools
-- [ ] Shader editor integration (VS Code extension)
-- [ ] Hot reload API for external editors
-- [ ] Shader gallery and sharing system
-- [ ] Performance profiling and optimization tools
-
 ### Platform Features
 - [ ] Support for lower-color terminals (256-color fallback)
-- [ ] ASCII art rendering mode
 - [ ] Terminal resize handling
-- [ ] Multiple terminal backend support
 
 ### Advanced Controls
 - [ ] Custom uniform parameters via command line

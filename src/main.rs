@@ -5,152 +5,122 @@ use crossterm::{
     cursor::{Hide, MoveTo, Show},
     event::{self, Event, KeyCode},
     execute,
-    terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        self as crossterm_terminal, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
+    },
 };
 
-#[derive(Clone, PartialEq)]
-struct Cell {
-    content: String,
-    is_empty: bool,
+mod gpu;
+mod terminal;
+
+use gpu::{ComputePipeline, GpuBuffers, GpuDevice, UniformBuffer, Uniforms};
+use terminal::{update_buffer_from_gpu_data, DoubleBuffer};
+
+// AIDEV-NOTE: Main application struct that manages GPU and terminal state
+struct App {
+    gpu_device: GpuDevice,
+    gpu_buffers: GpuBuffers,
+    uniform_buffer: UniformBuffer,
+    compute_pipeline: ComputePipeline,
+    terminal_buffer: DoubleBuffer,
+    width: u32,
+    height: u32,
 }
 
-impl Cell {
-    fn new() -> Self {
-        Cell {
-            content: " ".to_string(),
-            is_empty: true,
-        }
-    }
+impl App {
+    fn new(width: u32, height: u32) -> Result<Self, Box<dyn std::error::Error>> {
+        // Initialize GPU - double the height for half-cell rendering
+        let gpu_device = GpuDevice::new_blocking()?;
+        let gpu_buffers = GpuBuffers::new(&gpu_device.device, width, height * 2);
+        let uniform_buffer = UniformBuffer::new(&gpu_device.device);
+        let compute_pipeline =
+            ComputePipeline::new(&gpu_device.device, &gpu_buffers, &uniform_buffer);
 
-    fn set_content(&mut self, content: String) {
-        self.is_empty = content == " ";
-        self.content = content;
-    }
-}
+        // Initialize terminal buffer
+        let terminal_buffer = DoubleBuffer::new(width as usize, height as usize);
 
-struct DoubleBuffer {
-    current: Vec<Vec<Cell>>,
-    next: Vec<Vec<Cell>>,
-    width: usize,
-    height: usize,
-}
-
-impl DoubleBuffer {
-    fn new(width: usize, height: usize) -> Self {
-        let current = vec![vec![Cell::new(); width]; height];
-        let next = vec![vec![Cell::new(); width]; height];
-
-        DoubleBuffer {
-            current,
-            next,
+        Ok(Self {
+            gpu_device,
+            gpu_buffers,
+            uniform_buffer,
+            compute_pipeline,
+            terminal_buffer,
             width,
             height,
-        }
+        })
     }
 
-    fn set_cell(&mut self, x: usize, y: usize, content: String) {
-        if x < self.width && y < self.height {
-            self.next[y][x].set_content(content);
-        }
-    }
+    fn render_frame(
+        &mut self,
+        time: f32,
+    ) -> Result<Vec<(usize, usize, String)>, Box<dyn std::error::Error>> {
+        // Update uniforms - use doubled height for GPU resolution
+        let uniforms = Uniforms::new(self.width, self.height * 2, time);
+        self.uniform_buffer
+            .update(&self.gpu_device.queue, &uniforms);
 
-    fn clear_next(&mut self) {
-        for row in &mut self.next {
-            for cell in row {
-                cell.set_content(" ".to_string());
-            }
-        }
-    }
+        // Create command encoder
+        let mut encoder =
+            self.gpu_device
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Render Encoder"),
+                });
 
-    fn swap_and_get_changes(&mut self) -> Vec<(usize, usize, String)> {
-        let mut changes = Vec::new();
+        // Dispatch the compute shader - use doubled height
+        self.compute_pipeline
+            .dispatch(&mut encoder, self.width, self.height * 2);
 
-        for y in 0..self.height {
-            for x in 0..self.width {
-                if self.current[y][x] != self.next[y][x] {
-                    changes.push((x, y, self.next[y][x].content.clone()));
-                }
-            }
-        }
+        // Copy output to readback buffer
+        self.gpu_buffers.copy_to_readback(&mut encoder);
 
-        std::mem::swap(&mut self.current, &mut self.next);
-        changes
-    }
-}
+        // Submit commands
+        self.gpu_device.queue.submit(Some(encoder.finish()));
 
-fn shape_function(dx: f32, dy: f32, t: f32) -> (f32, f32, f32) {
-    let distance = (dx * dx + dy * dy).sqrt();
-    let angle = dy.atan2(dx);
+        // Read back the GPU data
+        let gpu_data = self
+            .gpu_buffers
+            .read_data_blocking(&self.gpu_device.device)?;
 
-    // Create colorful patterns based on distance and time
-    let r = (0.5 + 0.5 * (distance * 0.1 + t).sin()).clamp(0.0, 1.0);
-    let g = (0.5 + 0.5 * (distance * 0.15 + t * 1.5 + angle).sin()).clamp(0.0, 1.0);
-    let b = (0.5 + 0.5 * (distance * 0.2 + t * 0.8 - angle).sin()).clamp(0.0, 1.0);
+        // Update terminal buffer with GPU data - pass doubled height
+        update_buffer_from_gpu_data(
+            &mut self.terminal_buffer,
+            &gpu_data,
+            self.width,
+            self.height * 2,
+        );
 
-    (r, g, b)
-}
-
-fn rgb_to_256_color(r: f32, g: f32, b: f32) -> u8 {
-    // Convert 0-1 RGB to 256-color palette (6x6x6 color cube + grayscale)
-    let r_idx = (r * 5.0).round() as u8;
-    let g_idx = (g * 5.0).round() as u8;
-    let b_idx = (b * 5.0).round() as u8;
-
-    // 256-color cube: 16 + 36*r + 6*g + b
-    16 + 36 * r_idx + 6 * g_idx + b_idx
-}
-
-fn update_buffer(buffer: &mut DoubleBuffer, center_x: u16, center_y: u16, t: f32) {
-    buffer.clear_next();
-
-    for y in 0..buffer.height {
-        for x in 0..buffer.width {
-            let dx = x as f32 - center_x as f32;
-
-            // Get color for top half of cell (y - 0.5)
-            let top_dy = ((y as f32 - 0.5) - center_y as f32) * 2.0;
-            let (top_r, top_g, top_b) = shape_function(dx, top_dy, t);
-            let top_color = rgb_to_256_color(top_r, top_g, top_b);
-
-            // Get color for bottom half of cell (y + 0.5)
-            let bottom_dy = ((y as f32 + 0.5) - center_y as f32) * 2.0;
-            let (bottom_r, bottom_g, bottom_b) = shape_function(dx, bottom_dy, t);
-            let bottom_color = rgb_to_256_color(bottom_r, bottom_g, bottom_b);
-
-            // Create the content string with colors for both halves
-            // The ▀ character shows the foreground color on top and background color on bottom
-            let content = format!(
-                "\x1b[38;5;{}m\x1b[48;5;{}m▀\x1b[0m",
-                top_color, bottom_color
-            );
-
-            buffer.set_cell(x, y, content);
-        }
+        // Get changes for rendering
+        Ok(self.terminal_buffer.swap_and_get_changes())
     }
 }
 
-fn main() -> std::io::Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Enter alternate screen and hide cursor
     execute!(stdout(), EnterAlternateScreen, Hide)?;
 
     // Enable raw mode for better control
-    terminal::enable_raw_mode()?;
+    crossterm_terminal::enable_raw_mode()?;
 
     // Clear screen once
     execute!(stdout(), Clear(ClearType::All))?;
 
     // Get terminal size
-    let (width, height) = terminal::size()?;
+    let (width, height) = crossterm_terminal::size()?;
 
-    // Calculate center position
-    let center_x = width / 2;
-    let center_y = height / 2;
+    // Initialize the application
+    let mut app = match App::new(width as u32, height as u32) {
+        Ok(app) => app,
+        Err(e) => {
+            // Cleanup on error
+            execute!(stdout(), Show, LeaveAlternateScreen)?;
+            crossterm_terminal::disable_raw_mode()?;
+            return Err(e);
+        }
+    };
 
     let mut stdout = stdout();
     let start_time = Instant::now();
-
-    // Initialize double buffer
-    let mut buffer = DoubleBuffer::new(width as usize, height as usize);
 
     // Animation loop
     loop {
@@ -170,13 +140,17 @@ fn main() -> std::io::Result<()> {
         }
 
         // Get current time (seconds since start)
-        let t = start_time.elapsed().as_secs_f32();
+        let time = start_time.elapsed().as_secs_f32();
 
-        // Update the buffer with new frame data
-        update_buffer(&mut buffer, center_x, center_y, t);
-
-        // Get only the changes between frames
-        let changes = buffer.swap_and_get_changes();
+        // Render frame and get changes
+        let changes = match app.render_frame(time) {
+            Ok(changes) => changes,
+            Err(e) => {
+                // Print error and continue
+                eprintln!("Render error: {}", e);
+                continue;
+            }
+        };
 
         // Apply only the changed cells
         for (x, y, content) in changes {
@@ -192,7 +166,7 @@ fn main() -> std::io::Result<()> {
 
     // Cleanup
     execute!(stdout, Show, LeaveAlternateScreen)?;
-    terminal::disable_raw_mode()?;
+    crossterm_terminal::disable_raw_mode()?;
 
     Ok(())
 }

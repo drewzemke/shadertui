@@ -16,7 +16,7 @@ We optimize for maintainability over cleverness. When in doubt, choose the borin
 
 - always read `PRD.md` in order to get context before starting any work
 - always use the context7 tool to look up external libraries before using them
-- always run `cargo clippy` after finishing a chunk of work
+- always run `cargo fmt` and `cargo clippy` after finishing a chunk of work
 - you cannot run the app yourself, you so must always ask the developer to test manually on your behalf
 - always add dependencies using `cargo add`, not by writing directly to the package manifest
 - follow YAGNI; keep changes focused on the task at hand; do not do more work that is asked
