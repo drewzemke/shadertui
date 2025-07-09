@@ -14,7 +14,7 @@ We optimize for maintainability over cleverness. When in doubt, choose the borin
 
 ### Habits
 
-- always read `PRD.md` in order to get context before starting any work
+- always read `docs/PRD.md` in order to get context before starting any work
 - always use the context7 tool to look up external libraries before using them
 - always run `cargo fmt` and `cargo clippy` after finishing a chunk of work
 - you cannot run the app yourself, you so must always ask the developer to test manually on your behalf
