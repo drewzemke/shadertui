@@ -113,6 +113,21 @@ impl App {
     }
 }
 
+// AIDEV-NOTE: Validate shader compilation using naga without GPU device
+fn validate_shader(shader_source: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Parse WGSL using naga frontend
+    let module = naga::front::wgsl::parse_str(shader_source)?;
+    
+    // Validate the parsed module
+    let mut validator = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::all(),
+    );
+    validator.validate(&module)?;
+    
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command line arguments
     let cli = Cli::parse();
@@ -129,6 +144,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         }
     };
+
+    // Validate shader compilation before initializing GPU
+    if let Err(e) = validate_shader(&shader_source) {
+        eprintln!("Shader compilation error: {e}");
+        std::process::exit(1);
+    }
 
     // Get terminal size before initializing GPU
     let (width, height) = crossterm_terminal::size()?;

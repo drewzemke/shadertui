@@ -675,6 +675,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "naga"
+version = "26.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "916cbc7cb27db60be930a4e2da243cf4bc39569195f22fd8ee419cd31d5b662c"
+dependencies = [
+ "arrayvec",
+ "bit-set",
+ "bitflags 2.9.1",
+ "cfg-if",
+ "cfg_aliases",
+ "codespan-reporting",
+ "half",
+ "hashbrown",
+ "hexf-parse",
+ "indexmap",
+ "libm",
+ "log",
+ "num-traits",
+ "once_cell",
+ "rustc-hash",
+ "thiserror 2.0.12",
+ "unicode-ident",
+]
+
+[[package]]
 name = "nanorand"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -895,6 +920,7 @@ dependencies = [
  "clap",
  "crossterm",
  "flume",
+ "naga 26.0.0",
  "pollster",
  "wgpu",
 ]
@@ -1186,7 +1212,7 @@ dependencies = [
  "hashbrown",
  "js-sys",
  "log",
- "naga",
+ "naga 25.0.1",
  "parking_lot",
  "portable-atomic",
  "profiling",
@@ -1216,7 +1242,7 @@ dependencies = [
  "hashbrown",
  "indexmap",
  "log",
- "naga",
+ "naga 25.0.1",
  "once_cell",
  "parking_lot",
  "portable-atomic",
@@ -1287,7 +1313,7 @@ dependencies = [
  "libloading",
  "log",
  "metal",
- "naga",
+ "naga 25.0.1",
  "ndk-sys",
  "objc",
  "ordered-float",

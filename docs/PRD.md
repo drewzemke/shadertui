@@ -92,13 +92,13 @@ When enabled via `--perf`, displays in top row of terminal:
 **Verification**: Run the app and see a GPU-computed animated pattern (like a color gradient or simple sine wave pattern) rendering in the terminal using half-cell characters.
 
 ### Phase 2: File-Based Shader Loading
-- [ ] Add `clap` dependency for command line parsing
-- [ ] Implement basic CLI that accepts shader file as argument
-- [ ] Create WGSL file loading and parsing
-- [ ] Add shader compilation and pipeline creation from file
-- [ ] Create basic uniform buffer with time and resolution
-- [ ] Add error handling for shader compilation failures (clear screen, show error)
-- [ ] Create a few example WGSL shaders for testing
+- [x] Add `clap` dependency for command line parsing
+- [x] Implement basic CLI that accepts shader file as argument
+- [x] Create WGSL file loading and parsing
+- [x] Add shader compilation and pipeline creation from file
+- [x] Create basic uniform buffer with time and resolution
+- [x] Add error handling for shader compilation failures (clear screen, show error)
+- [x] Create a few example WGSL shaders for testing
 
 **Verification**: Run `shadertui example.wgsl` and see the shader from the file rendering. Test with broken shader files to confirm error handling works.
 
