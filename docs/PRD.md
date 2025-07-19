@@ -80,14 +80,14 @@ When enabled via `--perf`, displays in top row of terminal:
 ## Implementation Plan
 
 ### Phase 1: Minimal GPU Terminal Rendering
-- [ ] Set up project structure with Cargo.toml dependencies
-- [ ] Add required dependencies: `wgpu`, `pollster`, `bytemuck`, `crossterm`
-- [ ] Create basic wgpu device initialization and GPU context
-- [ ] Implement basic compute shader pipeline with hardcoded simple shader
-- [ ] Create GPU buffer for RGB output matching terminal resolution
-- [ ] Implement GPU→CPU buffer readback
-- [ ] Port existing terminal rendering to use 24-bit RGB from GPU buffer
-- [ ] Create simple animation loop with hardcoded time uniform
+- [x] Set up project structure with Cargo.toml dependencies
+- [x] Add required dependencies: `wgpu`, `pollster`, `bytemuck`, `crossterm`
+- [x] Create basic wgpu device initialization and GPU context
+- [x] Implement basic compute shader pipeline with hardcoded simple shader
+- [x] Create GPU buffer for RGB output matching terminal resolution
+- [x] Implement GPU→CPU buffer readback
+- [x] Port existing terminal rendering to use 24-bit RGB from GPU buffer
+- [x] Create simple animation loop with hardcoded time uniform
 
 **Verification**: Run the app and see a GPU-computed animated pattern (like a color gradient or simple sine wave pattern) rendering in the terminal using half-cell characters.
 

@@ -56,8 +56,7 @@ pub fn update_buffer_from_gpu_data(
             // Use ▀ character: foreground = top half, background = bottom half
             // 24-bit RGB: \x1b[38;2;r;g;b;m for foreground, \x1b[48;2;r;g;b;m for background
             let content = format!(
-                "\x1b[38;2;{};{};{}m\x1b[48;2;{};{};{}m▀\x1b[0m",
-                top_r, top_g, top_b, bottom_r, bottom_g, bottom_b
+                "\x1b[38;2;{top_r};{top_g};{top_b}m\x1b[48;2;{bottom_r};{bottom_g};{bottom_b}m▀\x1b[0m"
             );
 
             buffer.set_cell(x, y, content);

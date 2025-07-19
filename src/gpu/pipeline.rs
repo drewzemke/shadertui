@@ -11,10 +11,8 @@ impl ComputePipeline {
         device: &wgpu::Device,
         buffers: &GpuBuffers,
         uniform_buffer: &UniformBuffer,
-    ) -> Self {
-        // Load the shader source
-        let shader_source = include_str!("../shaders/default.wgsl");
-
+        shader_source: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         // Create the shader module
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Compute Shader"),
@@ -83,10 +81,10 @@ impl ComputePipeline {
             cache: None,
         });
 
-        Self {
+        Ok(Self {
             pipeline,
             bind_group,
-        }
+        })
     }
 
     pub fn dispatch(&self, encoder: &mut wgpu::CommandEncoder, width: u32, height: u32) {

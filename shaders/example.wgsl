@@ -19,8 +19,16 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     // Create normalized coordinates (0-1)
     let uv = coords / uniforms.resolution;
     
-    // Simple animated color gradient (matching PRD example)
-    let color = vec3<f32>(uv.x, uv.y, 0.5 + 0.5 * sin(uniforms.time));
+    // Different pattern - spiral colors
+    let center = vec2<f32>(0.5, 0.5);
+    let dist = distance(uv, center);
+    let angle = atan2(uv.y - center.y, uv.x - center.x);
+    
+    let color = vec3<f32>(
+        0.5 + 0.5 * sin(dist * 20.0 + uniforms.time),
+        0.5 + 0.5 * cos(angle * 5.0 + uniforms.time * 0.5),
+        0.5 + 0.5 * sin(uniforms.time * 2.0)
+    );
     
     // Clamp to [0, 1] range
     let final_color = vec3<f32>(
@@ -29,7 +37,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         clamp(color.b, 0.0, 1.0)
     );
     
-    // Write to output buffer - use vec4 with alpha=1.0 for proper alignment
+    // Write to output buffer
     let index = u32(coords.y * uniforms.resolution.x + coords.x);
     output[index] = vec4<f32>(final_color, 1.0);
 }

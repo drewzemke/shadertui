@@ -1,6 +1,9 @@
+use std::fs;
 use std::io::{stdout, Write};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use clap::Parser;
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
     event::{self, Event, KeyCode},
@@ -16,6 +19,13 @@ mod terminal;
 use gpu::{ComputePipeline, GpuBuffers, GpuDevice, UniformBuffer, Uniforms};
 use terminal::{update_buffer_from_gpu_data, DoubleBuffer};
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Path to the WGSL shader file
+    shader_file: PathBuf,
+}
+
 // AIDEV-NOTE: Main application struct that manages GPU and terminal state
 struct App {
     gpu_device: GpuDevice,
@@ -28,13 +38,21 @@ struct App {
 }
 
 impl App {
-    fn new(width: u32, height: u32) -> Result<Self, Box<dyn std::error::Error>> {
+    fn new(
+        width: u32,
+        height: u32,
+        shader_source: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         // Initialize GPU - double the height for half-cell rendering
         let gpu_device = GpuDevice::new_blocking()?;
         let gpu_buffers = GpuBuffers::new(&gpu_device.device, width, height * 2);
         let uniform_buffer = UniformBuffer::new(&gpu_device.device);
-        let compute_pipeline =
-            ComputePipeline::new(&gpu_device.device, &gpu_buffers, &uniform_buffer);
+        let compute_pipeline = ComputePipeline::new(
+            &gpu_device.device,
+            &gpu_buffers,
+            &uniform_buffer,
+            shader_source,
+        )?;
 
         // Initialize terminal buffer
         let terminal_buffer = DoubleBuffer::new(width as usize, height as usize);
@@ -96,7 +114,36 @@ impl App {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Enter alternate screen and hide cursor
+    // Parse command line arguments
+    let cli = Cli::parse();
+
+    // Load shader file
+    let shader_source = match fs::read_to_string(&cli.shader_file) {
+        Ok(content) => content,
+        Err(e) => {
+            eprintln!(
+                "Error reading shader file '{}': {}",
+                cli.shader_file.display(),
+                e
+            );
+            std::process::exit(1);
+        }
+    };
+
+    // Get terminal size before initializing GPU
+    let (width, height) = crossterm_terminal::size()?;
+
+    // Initialize the application BEFORE entering alternate screen
+    // This way, any shader compilation errors will display cleanly
+    let mut app = match App::new(width as u32, height as u32, &shader_source) {
+        Ok(app) => app,
+        Err(e) => {
+            eprintln!("Shader compilation error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    // Only enter alternate screen after successful initialization
     execute!(stdout(), EnterAlternateScreen, Hide)?;
 
     // Enable raw mode for better control
@@ -104,20 +151,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Clear screen once
     execute!(stdout(), Clear(ClearType::All))?;
-
-    // Get terminal size
-    let (width, height) = crossterm_terminal::size()?;
-
-    // Initialize the application
-    let mut app = match App::new(width as u32, height as u32) {
-        Ok(app) => app,
-        Err(e) => {
-            // Cleanup on error
-            execute!(stdout(), Show, LeaveAlternateScreen)?;
-            crossterm_terminal::disable_raw_mode()?;
-            return Err(e);
-        }
-    };
 
     let mut stdout = stdout();
     let start_time = Instant::now();
@@ -147,7 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(changes) => changes,
             Err(e) => {
                 // Print error and continue
-                eprintln!("Render error: {}", e);
+                eprintln!("Render error: {e}");
                 continue;
             }
         };
