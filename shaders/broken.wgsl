@@ -2,9 +2,12 @@
 @group(0) @binding(1) var<uniform> uniforms: Uniforms;
 
 struct Uniforms {
-    resolution: vec2<f32>,
-    time: f32,
-    _padding: f32,
+    resolution: vec2<f32>,    // Terminal resolution (cols, rows*2)
+    cursor: vec2<f32>,       // Cursor position (x, y)
+    time: f32,               // Seconds since start
+    frame: u32,              // Frame number
+    delta_time: f32,         // Time since last frame
+    _padding: f32,           // Ensure 16-byte alignment
 }
 
 @compute @workgroup_size(8, 8)

@@ -10,6 +10,11 @@ pub struct App {
     terminal_buffer: DoubleBuffer,
     width: u32,
     height: u32,
+    cursor: [i32; 2],
+    frame_count: u32,
+    last_frame_time: std::time::Instant,
+    time_paused: bool,
+    paused_time: f32,
 }
 
 impl App {
@@ -40,6 +45,11 @@ impl App {
             terminal_buffer,
             width,
             height,
+            cursor: [0, 0],
+            frame_count: 0,
+            last_frame_time: std::time::Instant::now(),
+            time_paused: false,
+            paused_time: 0.0,
         })
     }
 
@@ -61,12 +71,54 @@ impl App {
         Ok(())
     }
 
+    // AIDEV-NOTE: Move cursor position with arrow keys
+    pub fn move_cursor(&mut self, dx: i32, dy: i32) {
+        self.cursor[0] += dx;
+        self.cursor[1] += dy;
+    }
+
+    // AIDEV-NOTE: Toggle time pause state
+    pub fn toggle_pause(&mut self, current_time: f32) {
+        if self.time_paused {
+            // Resume: reset start time to account for paused duration
+            self.time_paused = false;
+        } else {
+            // Pause: store current time
+            self.time_paused = true;
+            self.paused_time = current_time;
+        }
+    }
+
     pub fn render_frame(
         &mut self,
-        time: f32,
+        start_time: std::time::Instant,
     ) -> Result<Vec<(usize, usize, String)>, Box<dyn std::error::Error>> {
+        // Calculate frame time and delta
+        let current_time = std::time::Instant::now();
+        let delta_time = current_time
+            .duration_since(self.last_frame_time)
+            .as_secs_f32();
+        self.last_frame_time = current_time;
+
+        // Calculate effective time (accounting for pause)
+        let effective_time = if self.time_paused {
+            self.paused_time
+        } else {
+            start_time.elapsed().as_secs_f32()
+        };
+
+        // Increment frame count
+        self.frame_count += 1;
+
         // Update uniforms - use doubled height for GPU resolution
-        let uniforms = Uniforms::new(self.width, self.height * 2, time);
+        let uniforms = Uniforms::new(
+            self.width,
+            self.height * 2,
+            effective_time,
+            self.cursor,
+            self.frame_count,
+            delta_time,
+        );
         self.uniform_buffer
             .update(&self.gpu_device.queue, &uniforms);
 

@@ -114,11 +114,10 @@ When enabled via `--perf`, displays in top row of terminal:
 **Verification**: Run `shadertui example.wgsl`, edit the shader file in another terminal/editor, and watch changes appear immediately in the running app.
 
 ### Phase 4: Complete Uniform System
-- [ ] Expand uniform buffer to include cursor position, frame count, delta time
-- [ ] Add input handling for arrow keys to control cursor position
-- [ ] Add spacebar for pause/resume functionality
-- [ ] Update example shaders to demonstrate all uniform features
-- [ ] Add quit controls (Q, Ctrl+C)
+- [x] Expand uniform buffer to include cursor position, frame count, delta time
+- [x] Add input handling for arrow keys to control cursor position
+- [x] Add spacebar for pause/resume functionality
+- [x] Update example shaders to demonstrate all uniform features
 
 **Verification**: Run the app and verify that arrow keys move cursor (affects shader output), spacebar pauses/resumes animation, and all uniforms are working correctly.
 

@@ -53,7 +53,7 @@ pub fn run_event_loop(cli: Cli, shader_source: String) -> Result<(), Box<dyn std
             error_state = handle_file_change(&mut app, &cli.shader_file, &mut stdout)?;
         }
 
-        // Check for exit events (non-blocking)
+        // Check for input events (non-blocking)
         if event::poll(Duration::from_millis(20))? {
             if let Event::Key(key_event) = event::read()? {
                 match key_event.code {
@@ -62,6 +62,14 @@ pub fn run_event_loop(cli: Cli, shader_source: String) -> Result<(), Box<dyn std
                         if key_event.modifiers.contains(event::KeyModifiers::CONTROL) =>
                     {
                         break
+                    }
+                    KeyCode::Up => app.move_cursor(0, -1),
+                    KeyCode::Down => app.move_cursor(0, 1),
+                    KeyCode::Left => app.move_cursor(-1, 0),
+                    KeyCode::Right => app.move_cursor(1, 0),
+                    KeyCode::Char(' ') => {
+                        let current_time = start_time.elapsed().as_secs_f32();
+                        app.toggle_pause(current_time);
                     }
                     _ => {}
                 }
@@ -84,11 +92,8 @@ pub fn run_event_loop(cli: Cli, shader_source: String) -> Result<(), Box<dyn std
             displayed_error = None;
         }
 
-        // Get current time (seconds since start)
-        let time = start_time.elapsed().as_secs_f32();
-
         // Render frame and get changes
-        let changes = match app.render_frame(time) {
+        let changes = match app.render_frame(start_time) {
             Ok(changes) => changes,
             Err(e) => {
                 // Print error and continue
