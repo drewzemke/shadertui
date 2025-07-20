@@ -174,6 +174,7 @@ impl TerminalRenderer {
         error_receiver: ErrorReceiver,
         shader_file: &Path,
         performance_tracker: Option<DualPerformanceTrackerHandle>,
+        max_fps: Option<u32>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Set up file watcher
         let mut file_watcher = FileWatcher::new(shader_file)?;
@@ -185,6 +186,10 @@ impl TerminalRenderer {
 
         let mut stdout = stdout();
         let start_time = Instant::now();
+
+        // Calculate frame time for FPS limiting
+        let frame_time = max_fps.map(|fps| Duration::from_millis(1000 / fps as u64));
+        let mut last_frame_time = Instant::now();
 
         // Terminal rendering loop
         loop {
@@ -301,8 +306,14 @@ impl TerminalRenderer {
                 }
             }
 
-            // Let terminal run as fast as possible - no artificial FPS limit
-            // std::thread::sleep(Duration::from_millis(16));
+            // Apply FPS limiting if max_fps is specified
+            if let Some(target_frame_time) = frame_time {
+                let elapsed = last_frame_time.elapsed();
+                if elapsed < target_frame_time {
+                    std::thread::sleep(target_frame_time - elapsed);
+                }
+                last_frame_time = Instant::now();
+            }
         }
 
         // Cleanup

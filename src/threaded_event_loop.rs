@@ -64,6 +64,7 @@ pub fn run_threaded_event_loop(
 
     // Spawn Terminal render thread
     let shader_file_path = cli.shader_file.clone();
+    let max_fps = cli.max_fps;
     let terminal_thread = thread::spawn(move || {
         let terminal_renderer = TerminalRenderer::new(width as u32, height as u32);
         if let Err(e) = terminal_renderer.run_terminal_thread(
@@ -73,6 +74,7 @@ pub fn run_threaded_event_loop(
             terminal_error_receiver,
             &shader_file_path,
             terminal_performance_tracker,
+            max_fps,
         ) {
             eprintln!("Terminal thread error: {e}");
         }

@@ -140,14 +140,11 @@ When enabled via `--perf`, displays in top row of terminal:
 
 **Verification**: Run `shadertui --perf example.wgsl` and see FPS and frame drop metrics in the top row of the terminal.
 
-### Phase 7: Enhanced CLI and Error Handling
+### Phase 7: Implement FPS Cap
 - [ ] Add `--max-fps` flag for terminal frame rate cap
-- [ ] Improve error messages and user feedback
 - [ ] Add help text and usage examples
-- [ ] Test CLI argument parsing and validation
-- [ ] Add graceful error recovery for various failure modes
 
-**Verification**: Test all command line options work correctly. Verify help text is useful and error messages are clear.
+**Verification**: Run `shadertui --perf --max-fps 10` and verify the capped framerate
 
 ### Phase 8: Polish and Example Library
 - [ ] Create comprehensive example shader library
