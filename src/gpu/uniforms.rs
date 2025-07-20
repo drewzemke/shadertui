@@ -9,10 +9,10 @@ use bytemuck::{Pod, Zeroable};
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct Uniforms {
-    pub resolution: [f32; 2], // Terminal resolution (cols, rows*2)  
+    pub resolution: [f32; 2], // Terminal resolution (cols, rows*2)
     pub cursor: [f32; 2],     // Cursor position (x, y)
     pub time: f32,            // Seconds since start
-    pub frame: u32,           // Frame number  
+    pub frame: u32,           // Frame number
     pub delta_time: f32,      // Time since last frame
     pub _padding: f32,        // Ensure 16-byte alignment
 }

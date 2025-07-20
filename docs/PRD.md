@@ -122,12 +122,11 @@ When enabled via `--perf`, displays in top row of terminal:
 **Verification**: Run the app and verify that arrow keys move cursor (affects shader output), spacebar pauses/resumes animation, and all uniforms are working correctly.
 
 ### Phase 5: Multi-threading Architecture
-- [ ] Design shared framebuffer structure with `Arc<Mutex<>>`
-- [ ] Implement GPU compute thread with continuous rendering loop
-- [ ] Implement terminal render thread with frame dropping capability
-- [ ] Add thread synchronization and communication
-- [ ] Test threading performance and frame dropping behavior
-- [ ] Add configurable terminal frame rate cap flag
+- [x] Design shared framebuffer structure with `Arc<Mutex<>>`
+- [x] Implement GPU compute thread with continuous rendering loop
+- [x] Implement terminal render thread with frame dropping capability
+- [x] Add thread synchronization and communication
+- [x] Test threading performance and frame dropping behavior
 
 **Verification**: Run the app and confirm it feels more responsive than the single-threaded version. Performance should be similar or better, with smoother rendering.
 
@@ -136,8 +135,6 @@ When enabled via `--perf`, displays in top row of terminal:
 - [ ] Implement FPS calculation and tracking
 - [ ] Add frame drop counting
 - [ ] Create performance display overlay in terminal top row
-- [ ] Test performance metrics accuracy
-- [ ] Add performance data formatting
 
 **Verification**: Run `shadertui --perf example.wgsl` and see FPS and frame drop metrics in the top row of the terminal.
 
