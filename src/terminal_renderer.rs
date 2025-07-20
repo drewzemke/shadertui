@@ -175,6 +175,76 @@ impl TerminalRenderer {
         }
     }
 
+    // AIDEV-NOTE: Build complete screen directly from GPU data for maximum performance
+    fn build_full_screen_from_gpu_data(
+        &self,
+        frame_data: &crate::threading::FrameData,
+        performance_tracker: &Option<DualPerformanceTrackerHandle>,
+        frame_buffer: &SharedFrameBufferHandle,
+    ) -> String {
+        let mut screen_content = String::new();
+        let gpu_data = &frame_data.gpu_data;
+        let gpu_width = frame_data.width;
+
+        // Handle performance overlay if enabled - reserve first row
+        if let Some(perf_text) = Self::format_performance_overlay(performance_tracker, frame_buffer)
+        {
+            // Create performance overlay on first row
+            let clear_line = " ".repeat(self.width as usize - perf_text.len());
+            screen_content.push_str(&perf_text);
+            screen_content.push_str(&clear_line);
+        }
+
+        // Determine starting row for GPU data (skip row 0 if performance monitoring enabled)
+        let start_row = if performance_tracker.is_some() { 1 } else { 0 };
+
+        // Build each terminal row from GPU data
+        for term_y in start_row..self.height as usize {
+            for term_x in 0..self.width as usize {
+                // Calculate GPU pixel rows for top and bottom halves of this terminal cell
+                let top_pixel_y = term_y * 2;
+                let bottom_pixel_y = term_y * 2 + 1;
+
+                // Get top half color
+                let top_idx = (top_pixel_y * gpu_width as usize + term_x) * 4;
+                let (top_r, top_g, top_b) = if top_idx + 2 < gpu_data.len() {
+                    (
+                        gpu_data[top_idx],
+                        gpu_data[top_idx + 1],
+                        gpu_data[top_idx + 2],
+                    )
+                } else {
+                    (0.0, 0.0, 0.0)
+                };
+
+                // Get bottom half color
+                let bottom_idx = (bottom_pixel_y * gpu_width as usize + term_x) * 4;
+                let (bottom_r, bottom_g, bottom_b) = if bottom_idx + 2 < gpu_data.len() {
+                    (
+                        gpu_data[bottom_idx],
+                        gpu_data[bottom_idx + 1],
+                        gpu_data[bottom_idx + 2],
+                    )
+                } else {
+                    (0.0, 0.0, 0.0)
+                };
+
+                // Convert to 0-255 range
+                let (top_r, top_g, top_b) = self.float_rgb_to_u8(top_r, top_g, top_b);
+                let (bottom_r, bottom_g, bottom_b) =
+                    self.float_rgb_to_u8(bottom_r, bottom_g, bottom_b);
+
+                // Create styled character: ▀ with top color as foreground, bottom as background
+                let styled_char = format!(
+                    "\x1b[38;2;{top_r};{top_g};{top_b}m\x1b[48;2;{bottom_r};{bottom_g};{bottom_b}m▀\x1b[0m"
+                );
+                screen_content.push_str(&styled_char);
+            }
+        }
+
+        screen_content
+    }
+
     // AIDEV-NOTE: Main terminal thread function - handles input, file watching, and display
     pub fn run_terminal_thread(
         mut self,
@@ -231,7 +301,7 @@ impl TerminalRenderer {
             }
 
             // Check for input events (non-blocking)
-            if event::poll(Duration::from_millis(16))? {
+            if event::poll(Duration::from_millis(1))? {
                 // ~60 FPS input polling
                 if let Event::Key(key_event) = event::read()? {
                     match key_event.code {
@@ -290,33 +360,21 @@ impl TerminalRenderer {
                 self.displayed_error = None;
             }
 
-            // Update from latest GPU frame
-            if self.update_from_frame_buffer(&frame_buffer, performance_tracker.is_some()) {
-                // Get changes for rendering
-                let changes = self.terminal_buffer.swap_and_get_changes();
+            // Update from latest GPU frame and render full screen
+            if let Some(frame_data) = {
+                let mut buffer = frame_buffer.lock().unwrap();
+                buffer.read_frame()
+            } {
+                // Build complete screen content directly from GPU data
+                let screen_content = self.build_full_screen_from_gpu_data(
+                    &frame_data,
+                    &performance_tracker,
+                    &frame_buffer,
+                );
 
-                // Apply only the changed cells
-                for (x, y, content) in changes {
-                    execute!(stdout, MoveTo(x as u16, y as u16))?;
-                    stdout.write_all(content.as_bytes())?;
-                }
-
-                // Draw performance overlay on top row if enabled - after all other changes
-                if let Some(perf_text) =
-                    Self::format_performance_overlay(&performance_tracker, &frame_buffer)
-                {
-                    execute!(stdout, MoveTo(0, 0))?;
-                    // Clear the entire top row with black background first
-                    let clear_line =
-                        format!("\x1b[48;2;0;0;0m{}\x1b[0m", " ".repeat(self.width as usize));
-                    stdout.write_all(clear_line.as_bytes())?;
-                    execute!(stdout, MoveTo(0, 0))?;
-                    // Use white text on black background to make it stand out
-                    let styled_perf =
-                        format!("\x1b[38;2;255;255;255m\x1b[48;2;0;0;0m{perf_text}\x1b[0m");
-                    stdout.write_all(styled_perf.as_bytes())?;
-                }
-
+                // Single write operation for the entire screen
+                execute!(stdout, MoveTo(0, 0))?;
+                stdout.write_all(screen_content.as_bytes())?;
                 stdout.flush()?;
 
                 // Record terminal frame for performance tracking
@@ -326,8 +384,8 @@ impl TerminalRenderer {
                 }
             }
 
-            // Target ~60 FPS for terminal updates
-            std::thread::sleep(Duration::from_millis(16));
+            // Let terminal run as fast as possible - no artificial FPS limit
+            // std::thread::sleep(Duration::from_millis(16));
         }
 
         // Cleanup
