@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -121,3 +122,105 @@ pub enum ThreadError {
 
 pub type ErrorSender = std::sync::mpsc::Sender<ThreadError>;
 pub type ErrorReceiver = std::sync::mpsc::Receiver<ThreadError>;
+
+// AIDEV-NOTE: Performance monitoring for FPS and frame drop tracking
+#[derive(Debug)]
+pub struct PerformanceTracker {
+    frame_times: VecDeque<Instant>,
+    last_fps_calculation: Instant,
+    current_fps: f32,
+    total_frames_rendered: u64,
+    max_frame_history: usize,
+}
+
+impl PerformanceTracker {
+    pub fn new() -> Self {
+        Self {
+            frame_times: VecDeque::new(),
+            last_fps_calculation: Instant::now(),
+            current_fps: 0.0,
+            total_frames_rendered: 0,
+            max_frame_history: 60, // Track last 60 frames for smooth FPS calculation
+        }
+    }
+
+    // AIDEV-NOTE: Record a new frame render completion
+    pub fn record_frame(&mut self) {
+        let now = Instant::now();
+        self.frame_times.push_back(now);
+        self.total_frames_rendered += 1;
+
+        // Keep only recent frames for FPS calculation
+        while self.frame_times.len() > self.max_frame_history {
+            self.frame_times.pop_front();
+        }
+
+        // Update FPS every 250ms for smooth display
+        if now.duration_since(self.last_fps_calculation).as_millis() >= 250 {
+            self.update_fps();
+            self.last_fps_calculation = now;
+        }
+    }
+
+    fn update_fps(&mut self) {
+        if self.frame_times.len() < 2 {
+            self.current_fps = 0.0;
+            return;
+        }
+
+        let time_span = self
+            .frame_times
+            .back()
+            .unwrap()
+            .duration_since(*self.frame_times.front().unwrap())
+            .as_secs_f32();
+
+        if time_span > 0.0 {
+            self.current_fps = (self.frame_times.len() - 1) as f32 / time_span;
+        }
+    }
+
+    pub fn get_fps(&self) -> f32 {
+        self.current_fps
+    }
+
+    pub fn get_total_frames(&self) -> u64 {
+        self.total_frames_rendered
+    }
+}
+
+pub type PerformanceTrackerHandle = Arc<Mutex<PerformanceTracker>>;
+
+// AIDEV-NOTE: Combined performance tracking for both GPU and Terminal rendering
+#[derive(Debug)]
+pub struct DualPerformanceTracker {
+    pub gpu_tracker: PerformanceTracker,
+    pub terminal_tracker: PerformanceTracker,
+}
+
+impl DualPerformanceTracker {
+    pub fn new() -> Self {
+        Self {
+            gpu_tracker: PerformanceTracker::new(),
+            terminal_tracker: PerformanceTracker::new(),
+        }
+    }
+
+    pub fn record_gpu_frame(&mut self) {
+        self.gpu_tracker.record_frame();
+    }
+
+    pub fn record_terminal_frame(&mut self) {
+        self.terminal_tracker.record_frame();
+    }
+
+    pub fn get_gpu_fps(&self) -> f32 {
+        self.gpu_tracker.get_fps()
+    }
+
+    pub fn get_terminal_fps(&self) -> f32 {
+        self.terminal_tracker.get_fps()
+    }
+}
+
+pub type DualPerformanceTrackerHandle = Arc<Mutex<DualPerformanceTracker>>;

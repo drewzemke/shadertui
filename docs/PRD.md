@@ -131,10 +131,12 @@ When enabled via `--perf`, displays in top row of terminal:
 **Verification**: Run the app and confirm it feels more responsive than the single-threaded version. Performance should be similar or better, with smoother rendering.
 
 ### Phase 6: Performance Monitoring
-- [ ] Add `--perf` flag for performance monitoring
-- [ ] Implement FPS calculation and tracking
-- [ ] Add frame drop counting
-- [ ] Create performance display overlay in terminal top row
+- [x] Add `--perf` flag for performance monitoring
+- [x] Implement FPS calculation and tracking
+- [x] Add frame drop counting
+- [x] Create performance display overlay in terminal top row
+- [x] Fix overlay flickering by excluding top row from shader rendering
+- [x] Test performance monitoring functionality
 
 **Verification**: Run `shadertui --perf example.wgsl` and see FPS and frame drop metrics in the top row of the terminal.
 
@@ -156,6 +158,20 @@ When enabled via `--perf`, displays in top row of terminal:
 - [ ] Add any missing error handling edge cases
 
 **Verification**: Run through all example shaders, test in different terminals, and confirm the app works reliably in various environments.
+
+### Phase 9: Windowed Rendering Mode
+- [ ] Add `winit` dependency for cross-platform windowing
+- [ ] Add `--window` / `-w` CLI flag to enable window mode
+- [ ] Create `Renderer` trait to abstract terminal vs window rendering
+- [ ] Implement `WindowRenderer` that renders directly to wgpu surface
+- [ ] Handle window creation, sizing, and event loop integration
+- [ ] Support window resizing with automatic uniform updates
+- [ ] Maintain same keyboard controls (arrows, spacebar, Q/Ctrl+C)
+- [ ] Ensure performance metrics work in both modes
+- [ ] Update file watcher and hot reload to work with window mode
+- [ ] Add window-specific error handling (surface creation, etc.)
+
+**Verification**: Run `shadertui --window example.wgsl` and confirm the shader renders in a resizable window with the same controls and hot reload functionality as terminal mode. Performance metrics should be displayed and window resizing should update shader uniforms.
 
 ## Example Usage Scenarios
 
@@ -179,6 +195,16 @@ shadertui --perf complex_shader.wgsl
 ```bash
 # Limit terminal updates for battery savings
 shadertui --max-fps 30 battery_friendly.wgsl
+```
+
+### Windowed Development
+```bash
+# Render shader in a resizable window for better visual quality
+shadertui --window example.wgsl
+shadertui -w example.wgsl
+
+# Combine window mode with performance monitoring
+shadertui --window --perf complex_shader.wgsl
 ```
 
 ## Potential Development Issues

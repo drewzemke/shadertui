@@ -4,7 +4,9 @@ use std::thread;
 use crate::cli::Cli;
 use crate::gpu_renderer::GpuRenderer;
 use crate::terminal_renderer::TerminalRenderer;
-use crate::threading::{ErrorReceiver, SharedFrameBuffer, SharedUniforms, ThreadError};
+use crate::threading::{
+    DualPerformanceTracker, ErrorReceiver, SharedFrameBuffer, SharedUniforms, ThreadError,
+};
 
 // AIDEV-NOTE: Multi-threaded event loop with independent GPU and Terminal threads
 pub fn run_threaded_event_loop(
@@ -17,6 +19,11 @@ pub fn run_threaded_event_loop(
     // Create shared state
     let frame_buffer = Arc::new(Mutex::new(SharedFrameBuffer::new()));
     let shared_uniforms = Arc::new(Mutex::new(SharedUniforms::new()));
+    let performance_tracker = if cli.perf {
+        Some(Arc::new(Mutex::new(DualPerformanceTracker::new())))
+    } else {
+        None
+    };
 
     // Create error communication channels
     let (main_error_sender, main_error_receiver): (_, ErrorReceiver) = std::sync::mpsc::channel();
@@ -37,10 +44,12 @@ pub fn run_threaded_event_loop(
     let gpu_shared_uniforms = Arc::clone(&shared_uniforms);
     let gpu_main_error_sender = main_error_sender.clone();
     let gpu_terminal_error_sender = terminal_error_sender.clone();
+    let gpu_performance_tracker = performance_tracker.as_ref().map(Arc::clone);
 
     let terminal_frame_buffer = Arc::clone(&frame_buffer);
     let terminal_shared_uniforms = Arc::clone(&shared_uniforms);
     let terminal_main_error_sender = main_error_sender.clone();
+    let terminal_performance_tracker = performance_tracker.as_ref().map(Arc::clone);
 
     // Spawn GPU compute thread
     let _gpu_thread = thread::spawn(move || {
@@ -49,6 +58,7 @@ pub fn run_threaded_event_loop(
             gpu_shared_uniforms,
             gpu_main_error_sender,
             gpu_terminal_error_sender,
+            gpu_performance_tracker,
         );
     });
 
@@ -62,6 +72,7 @@ pub fn run_threaded_event_loop(
             terminal_main_error_sender,
             terminal_error_receiver,
             &shader_file_path,
+            terminal_performance_tracker,
         ) {
             eprintln!("Terminal thread error: {e}");
         }

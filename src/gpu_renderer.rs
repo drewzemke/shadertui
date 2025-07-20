@@ -2,7 +2,8 @@ use std::time::Instant;
 
 use crate::gpu::{ComputePipeline, GpuBuffers, GpuDevice, UniformBuffer, Uniforms};
 use crate::threading::{
-    ErrorSender, FrameData, SharedFrameBufferHandle, SharedUniformsHandle, ThreadError,
+    DualPerformanceTrackerHandle, ErrorSender, FrameData, SharedFrameBufferHandle,
+    SharedUniformsHandle, ThreadError,
 };
 
 // AIDEV-NOTE: GPU renderer runs in dedicated thread for continuous compute
@@ -148,6 +149,7 @@ impl GpuRenderer {
         shared_uniforms: SharedUniformsHandle,
         main_error_sender: ErrorSender,
         terminal_error_sender: ErrorSender,
+        performance_tracker: Option<DualPerformanceTrackerHandle>,
     ) {
         loop {
             // Check for shader reload requests
@@ -176,6 +178,12 @@ impl GpuRenderer {
                     {
                         let mut buffer = frame_buffer.lock().unwrap();
                         buffer.write_frame(frame_data);
+                    }
+
+                    // Record GPU frame for performance tracking
+                    if let Some(ref tracker) = performance_tracker {
+                        let mut perf = tracker.lock().unwrap();
+                        perf.record_gpu_frame();
                     }
                 }
                 Err(e) => {

@@ -10,6 +10,10 @@ use crate::app::validate_shader;
 pub struct Cli {
     /// Path to the WGSL shader file
     pub shader_file: PathBuf,
+
+    /// Enable performance monitoring display
+    #[arg(short, long)]
+    pub perf: bool,
 }
 
 impl Cli {
