@@ -7,9 +7,6 @@ use std::time::Instant;
 pub struct FrameData {
     pub gpu_data: Vec<f32>,
     pub width: u32,
-    pub height: u32,
-    pub frame_number: u32,
-    pub timestamp: Instant,
 }
 
 pub struct SharedFrameBuffer {
@@ -49,10 +46,6 @@ impl SharedFrameBuffer {
 
     pub fn get_frames_dropped(&self) -> u64 {
         self.frames_dropped
-    }
-
-    pub fn reset_drop_counter(&mut self) {
-        self.frames_dropped = 0;
     }
 }
 
@@ -116,7 +109,6 @@ pub enum ThreadError {
     ShaderCompilationError(String),
     ShaderReloadSuccess,
     GpuError(String),
-    TerminalError(String),
     Shutdown,
 }
 
@@ -183,13 +175,7 @@ impl PerformanceTracker {
     pub fn get_fps(&self) -> f32 {
         self.current_fps
     }
-
-    pub fn get_total_frames(&self) -> u64 {
-        self.total_frames_rendered
-    }
 }
-
-pub type PerformanceTrackerHandle = Arc<Mutex<PerformanceTracker>>;
 
 // AIDEV-NOTE: Combined performance tracking for both GPU and Terminal rendering
 #[derive(Debug)]

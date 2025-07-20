@@ -97,11 +97,6 @@ pub fn run_threaded_event_loop(
                 // GPU errors are now handled by the terminal thread
                 // and displayed in the UI, so we just continue here
             }
-            Ok(ThreadError::TerminalError(msg)) => {
-                // Terminal error is more serious - exit
-                eprintln!("Terminal error: {msg}");
-                break;
-            }
             Err(_) => {
                 // Channel closed - threads have exited
                 break;

@@ -13,7 +13,6 @@ use crossterm::{
 };
 
 use crate::file_watcher::FileWatcher;
-use crate::terminal::{update_buffer_from_gpu_data, DoubleBuffer};
 use crate::threading::{
     DualPerformanceTrackerHandle, ErrorReceiver, ErrorSender, SharedFrameBufferHandle,
     SharedUniformsHandle, ThreadError,
@@ -21,7 +20,6 @@ use crate::threading::{
 
 // AIDEV-NOTE: Terminal renderer runs in dedicated thread for display and input
 pub struct TerminalRenderer {
-    terminal_buffer: DoubleBuffer,
     width: u32,
     height: u32,
     error_state: Option<String>,
@@ -30,99 +28,11 @@ pub struct TerminalRenderer {
 
 impl TerminalRenderer {
     pub fn new(width: u32, height: u32) -> Self {
-        let terminal_buffer = DoubleBuffer::new(width as usize, height as usize);
-
         Self {
-            terminal_buffer,
             width,
             height,
             error_state: None,
             displayed_error: None,
-        }
-    }
-
-    // AIDEV-NOTE: Process latest frame from GPU thread
-    fn update_from_frame_buffer(
-        &mut self,
-        frame_buffer: &SharedFrameBufferHandle,
-        perf_enabled: bool,
-    ) -> bool {
-        let mut buffer = frame_buffer.lock().unwrap();
-        if let Some(frame_data) = buffer.read_frame() {
-            // Update terminal buffer with GPU data
-            if perf_enabled {
-                // Skip the top row when performance monitoring is enabled
-                self.update_buffer_from_gpu_data_skip_top_row(
-                    &frame_data.gpu_data,
-                    frame_data.width,
-                    frame_data.height,
-                );
-            } else {
-                update_buffer_from_gpu_data(
-                    &mut self.terminal_buffer,
-                    &frame_data.gpu_data,
-                    frame_data.width,
-                    frame_data.height,
-                );
-            }
-            true
-        } else {
-            false
-        }
-    }
-
-    // AIDEV-NOTE: Update buffer from GPU data but skip row 0 to avoid performance overlay conflict
-    fn update_buffer_from_gpu_data_skip_top_row(
-        &mut self,
-        gpu_data: &[f32],
-        gpu_width: u32,
-        _gpu_height: u32,
-    ) {
-        self.terminal_buffer.clear_next();
-
-        // Each terminal cell represents 2 vertical pixels (top and bottom half)
-        // Skip y=0 (top row) to preserve performance overlay space
-        for y in 1..self.terminal_buffer.height {
-            for x in 0..self.terminal_buffer.width {
-                // Calculate GPU pixel rows for top and bottom halves of this terminal cell
-                let top_pixel_y = y * 2;
-                let bottom_pixel_y = y * 2 + 1;
-
-                // Use gpu_width for proper indexing (same logic as original function)
-                let top_idx = (top_pixel_y * gpu_width as usize + x) * 4;
-                let (top_r, top_g, top_b) = if top_idx + 2 < gpu_data.len() {
-                    (
-                        gpu_data[top_idx],
-                        gpu_data[top_idx + 1],
-                        gpu_data[top_idx + 2],
-                    )
-                } else {
-                    (0.0, 0.0, 0.0)
-                };
-
-                let bottom_idx = (bottom_pixel_y * gpu_width as usize + x) * 4;
-                let (bottom_r, bottom_g, bottom_b) = if bottom_idx + 2 < gpu_data.len() {
-                    (
-                        gpu_data[bottom_idx],
-                        gpu_data[bottom_idx + 1],
-                        gpu_data[bottom_idx + 2],
-                    )
-                } else {
-                    (0.0, 0.0, 0.0)
-                };
-
-                // Convert to 0-255 range for RGB colors
-                let (top_r, top_g, top_b) = self.float_rgb_to_u8(top_r, top_g, top_b);
-                let (bottom_r, bottom_g, bottom_b) =
-                    self.float_rgb_to_u8(bottom_r, bottom_g, bottom_b);
-
-                // Use ▀ character: foreground = top half, background = bottom half
-                let content = format!(
-                    "\x1b[38;2;{top_r};{top_g};{top_b}m\x1b[48;2;{bottom_r};{bottom_g};{bottom_b}m▀\x1b[0m"
-                );
-
-                self.terminal_buffer.set_cell(x, y, content);
-            }
         }
     }
 
@@ -235,10 +145,20 @@ impl TerminalRenderer {
                     self.float_rgb_to_u8(bottom_r, bottom_g, bottom_b);
 
                 // Create styled character: ▀ with top color as foreground, bottom as background
-                let styled_char = format!(
-                    "\x1b[38;2;{top_r};{top_g};{top_b}m\x1b[48;2;{bottom_r};{bottom_g};{bottom_b}m▀\x1b[0m"
-                );
-                screen_content.push_str(&styled_char);
+                // Optimize: use push_str with pre-built components instead of format!
+                screen_content.push_str("\x1b[38;2;");
+                screen_content.push_str(&top_r.to_string());
+                screen_content.push(';');
+                screen_content.push_str(&top_g.to_string());
+                screen_content.push(';');
+                screen_content.push_str(&top_b.to_string());
+                screen_content.push_str("m\x1b[48;2;");
+                screen_content.push_str(&bottom_r.to_string());
+                screen_content.push(';');
+                screen_content.push_str(&bottom_g.to_string());
+                screen_content.push(';');
+                screen_content.push_str(&bottom_b.to_string());
+                screen_content.push_str("m▀\x1b[0m");
             }
         }
 
@@ -293,9 +213,6 @@ impl TerminalRenderer {
                     }
                     ThreadError::Shutdown => {
                         break;
-                    }
-                    ThreadError::TerminalError(_) => {
-                        // This shouldn't happen since we're the terminal thread
                     }
                 }
             }

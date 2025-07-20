@@ -1,13 +1,11 @@
-mod app;
 mod cli;
-mod event_loop;
 mod file_watcher;
 mod gpu;
 mod gpu_renderer;
-mod terminal;
 mod terminal_renderer;
 mod threaded_event_loop;
 mod threading;
+mod validation;
 
 use cli::Cli;
 use threaded_event_loop::run_threaded_event_loop;

@@ -54,7 +54,7 @@ impl GpuRenderer {
     // AIDEV-NOTE: Reload shader with new source, called from compute thread
     pub fn reload_shader(&mut self, shader_source: &str) -> Result<(), Box<dyn std::error::Error>> {
         // Validate shader first using existing validation function
-        crate::app::validate_shader(shader_source)?;
+        crate::validation::validate_shader(shader_source)?;
 
         // Create new compute pipeline
         let new_pipeline = ComputePipeline::new(
@@ -136,9 +136,6 @@ impl GpuRenderer {
         Ok(FrameData {
             gpu_data,
             width: self.width,
-            height: self.height * 2, // GPU height is doubled
-            frame_number: self.frame_count,
-            timestamp: current_time,
         })
     }
 

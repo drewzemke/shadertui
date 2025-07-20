@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use crate::app::validate_shader;
+use crate::validation::validate_shader;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
