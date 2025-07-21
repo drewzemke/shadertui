@@ -34,15 +34,12 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     // Frame-based color cycling
     let frame_factor = f32(uniforms.frame % 360u) / 360.0;
     
-    // Delta time visualization (brightness oscillation)
-    let delta_brightness = 0.8 + 0.2 * sin(uniforms.delta_time * 100.0);
-    
     // Combined color effect
     let color = vec3<f32>(
         0.5 + 0.3 * sin(uv.x * 10.0 + uniforms.time) + ripple * 0.3,
         0.5 + 0.3 * cos(6.28) + ripple * 0.2,
         0.5 + 0.3 * sin(uv.y * 8.0 + uniforms.time * 0.7) + ripple * 0.4
-    ) * delta_brightness;
+    );
     
     // Clamp to [0, 1] range
     let final_color = vec3<f32>(
