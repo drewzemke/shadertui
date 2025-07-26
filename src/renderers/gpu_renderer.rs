@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use crate::gpu::{ComputePipeline, GpuBuffers, GpuDevice, UniformBuffer, Uniforms};
-use crate::threading::{
+use crate::utils::threading::{
     DualPerformanceTrackerHandle, ErrorSender, FrameData, SharedFrameBufferHandle,
     SharedUniformsHandle, ThreadError,
 };
@@ -54,7 +54,7 @@ impl GpuRenderer {
     // AIDEV-NOTE: Reload shader with new source, called from compute thread
     pub fn reload_shader(&mut self, shader_source: &str) -> Result<(), Box<dyn std::error::Error>> {
         // Validate shader first using existing validation function
-        crate::validation::validate_shader(shader_source)?;
+        crate::utils::validation::validate_shader(shader_source)?;
 
         // Create new compute pipeline
         let new_pipeline = ComputePipeline::new(

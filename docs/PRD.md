@@ -151,7 +151,24 @@ When enabled via `--perf`, displays in top row of terminal:
 
 **Verification**: Run through all example shaders, test in different terminals, and confirm the app works reliably in various environments.
 
-### Phase 9: Windowed Rendering Mode
+### Phase 9: WGSL Import System
+- [x] **Phase 9.1: Basic Import Processing**
+  - [x] Add import detection regex to find `// @import "path"` comments
+  - [x] Implement recursive file reading and content inlining
+  - [x] Add relative path resolution (relative to importing file)
+  - [x] Create basic error handling for missing files
+- [x] **Phase 9.2: Dependency Tracking**  
+  - [x] Track dependency chains for each shader file
+  - [x] Implement circular dependency detection and error reporting
+  - [x] Add file modification time tracking for all dependencies
+- [x] **Phase 9.3: Hot Reload Integration**
+  - [x] Extend file watcher to monitor all dependency files
+  - [x] Trigger shader recompilation when any dependency changes
+  - [x] Update dependency tracking when main shader imports change
+
+**Verification**: Create `utils.wgsl` with `hash`, `noise`, `fbm` functions. Update `example2.wgsl` to use `// @import "utils.wgsl"` instead of inline functions. Verify hot reload works when editing either file.
+
+### Phase 10: Windowed Rendering Mode
 - [ ] Add `winit` dependency for cross-platform windowing
 - [ ] Add `--window` / `-w` CLI flag to enable window mode
 - [ ] Create `Renderer` trait to abstract terminal vs window rendering

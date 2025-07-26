@@ -1,14 +1,10 @@
-mod cli;
-mod file_watcher;
 mod gpu;
-mod gpu_renderer;
-mod terminal_renderer;
+mod renderers;
 mod threaded_event_loop;
-mod threading;
-mod validation;
+mod utils;
 
-use cli::Cli;
 use threaded_event_loop::run_threaded_event_loop;
+use utils::Cli;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (cli, shader_source) = Cli::parse_and_load()?;

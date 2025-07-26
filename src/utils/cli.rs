@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use crate::validation::validate_shader;
+use crate::utils::{shader_import::process_imports, validation::validate_shader};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -30,8 +30,8 @@ impl Cli {
         // Parse command line arguments
         let cli = Self::parse();
 
-        // Load shader file
-        let shader_source = match fs::read_to_string(&cli.shader_file) {
+        // Load shader file with import processing
+        let raw_shader_source = match fs::read_to_string(&cli.shader_file) {
             Ok(content) => content,
             Err(e) => {
                 eprintln!(
@@ -39,6 +39,14 @@ impl Cli {
                     cli.shader_file.display(),
                     e
                 );
+                std::process::exit(1);
+            }
+        };
+
+        let shader_source = match process_imports(&cli.shader_file, &raw_shader_source) {
+            Ok((processed, _deps)) => processed,
+            Err(e) => {
+                eprintln!("Import processing error: {e}");
                 std::process::exit(1);
             }
         };

@@ -1,11 +1,9 @@
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::cli::Cli;
-use crate::gpu_renderer::GpuRenderer;
-use crate::terminal_renderer::TerminalRenderer;
-use crate::threading::{
-    DualPerformanceTracker, ErrorReceiver, SharedFrameBuffer, SharedUniforms, ThreadError,
+use crate::renderers::{GpuRenderer, TerminalRenderer};
+use crate::utils::{
+    Cli, DualPerformanceTracker, ErrorReceiver, SharedFrameBuffer, SharedUniforms, ThreadError,
 };
 
 // AIDEV-NOTE: Multi-threaded event loop with independent GPU and Terminal threads

@@ -12,8 +12,9 @@ use crossterm::{
     },
 };
 
-use crate::file_watcher::FileWatcher;
-use crate::threading::{
+use crate::utils::multi_file_watcher::MultiFileWatcher;
+use crate::utils::shader_import::{process_imports, DependencyInfo};
+use crate::utils::threading::{
     DualPerformanceTrackerHandle, ErrorReceiver, ErrorSender, SharedFrameBufferHandle,
     SharedUniformsHandle, ThreadError,
 };
@@ -44,21 +45,27 @@ impl TerminalRenderer {
         (r, g, b)
     }
 
-    // AIDEV-NOTE: Handle file change and request shader reload
+    // AIDEV-NOTE: Handle file change and request shader reload, return dependency info
     fn handle_file_change(
         shader_file: &Path,
         shared_uniforms: &SharedUniformsHandle,
-    ) -> Option<String> {
+    ) -> Result<DependencyInfo, String> {
         match fs::read_to_string(shader_file) {
-            Ok(new_shader_source) => {
-                // Request shader reload via shared uniforms
-                {
-                    let mut uniforms = shared_uniforms.lock().unwrap();
-                    uniforms.request_shader_reload(new_shader_source);
+            Ok(raw_shader_source) => {
+                // Process imports before reloading
+                match process_imports(shader_file, &raw_shader_source) {
+                    Ok((processed_shader_source, deps)) => {
+                        // Request shader reload via shared uniforms
+                        {
+                            let mut uniforms = shared_uniforms.lock().unwrap();
+                            uniforms.request_shader_reload(processed_shader_source);
+                        }
+                        Ok(deps)
+                    }
+                    Err(e) => Err(format!("Import processing error: {e}")),
                 }
-                None // No error, reload requested
             }
-            Err(e) => Some(format!("File read error: {e}")),
+            Err(e) => Err(format!("File read error: {e}")),
         }
     }
 
@@ -88,7 +95,7 @@ impl TerminalRenderer {
     // AIDEV-NOTE: Build complete screen directly from GPU data for maximum performance
     fn build_full_screen_from_gpu_data(
         &self,
-        frame_data: &crate::threading::FrameData,
+        frame_data: &crate::utils::threading::FrameData,
         performance_tracker: &Option<DualPerformanceTrackerHandle>,
         frame_buffer: &SharedFrameBufferHandle,
     ) -> String {
@@ -166,6 +173,7 @@ impl TerminalRenderer {
     }
 
     // AIDEV-NOTE: Main terminal thread function - handles input, file watching, and display
+    #[expect(clippy::too_many_arguments)]
     pub fn run_terminal_thread(
         mut self,
         frame_buffer: SharedFrameBufferHandle,
@@ -176,8 +184,15 @@ impl TerminalRenderer {
         performance_tracker: Option<DualPerformanceTrackerHandle>,
         max_fps: Option<u32>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Set up file watcher
-        let mut file_watcher = FileWatcher::new(shader_file)?;
+        // Set up multi-file watcher for main shader and dependencies
+        let mut file_watcher = MultiFileWatcher::new(shader_file)?;
+
+        // Initial dependency scan to watch all imported files
+        if let Ok(raw_content) = fs::read_to_string(shader_file) {
+            if let Ok((_, deps)) = process_imports(shader_file, &raw_content) {
+                let _ = file_watcher.update_watched_files(&deps.all_files);
+            }
+        }
 
         // Enter alternate screen and setup terminal
         execute!(stdout(), EnterAlternateScreen, Hide)?;
@@ -193,13 +208,21 @@ impl TerminalRenderer {
 
         // Terminal rendering loop
         loop {
-            // Check for file changes
-            if file_watcher.check_for_changes() {
-                if let Some(error_msg) = Self::handle_file_change(shader_file, &shared_uniforms) {
-                    self.error_state = Some(error_msg);
-                } else {
-                    // Clear error state on successful reload request
-                    self.error_state = None;
+            // Check for file changes (any watched file)
+            if file_watcher.check_for_changes().is_some() {
+                match Self::handle_file_change(shader_file, &shared_uniforms) {
+                    Ok(deps) => {
+                        // Update watched files with new dependency info
+                        if let Err(e) = file_watcher.update_watched_files(&deps.all_files) {
+                            self.error_state = Some(format!("File watcher update error: {e}"));
+                        } else {
+                            // Clear error state on successful reload request
+                            self.error_state = None;
+                        }
+                    }
+                    Err(error_msg) => {
+                        self.error_state = Some(error_msg);
+                    }
                 }
             }
 
