@@ -11,7 +11,8 @@ use crate::utils::{shader_import::process_imports, validation::validate_shader};
     shadertui example.wgsl                    # Basic usage
     shadertui --perf example.wgsl             # With performance monitoring
     shadertui --max-fps 30 example.wgsl       # Limit terminal refresh to 30 FPS
-    shadertui --perf --max-fps 10 shader.wgsl # Performance monitoring with 10 FPS cap")]
+    shadertui --window example.wgsl           # Render in a window instead of terminal
+    shadertui --window --perf shader.wgsl     # Windowed mode with performance monitoring")]
 pub struct Cli {
     /// Path to the WGSL shader file
     pub shader_file: PathBuf,
@@ -23,6 +24,10 @@ pub struct Cli {
     /// Maximum terminal frame rate (frames per second)
     #[arg(long, value_name = "FPS")]
     pub max_fps: Option<u32>,
+
+    /// Render in a window instead of terminal
+    #[arg(short, long)]
+    pub window: bool,
 }
 
 impl Cli {
@@ -58,5 +63,9 @@ impl Cli {
         }
 
         Ok((cli, shader_source))
+    }
+
+    pub fn is_windowed_mode(&self) -> bool {
+        self.window
     }
 }

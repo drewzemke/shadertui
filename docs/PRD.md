@@ -169,18 +169,46 @@ When enabled via `--perf`, displays in top row of terminal:
 **Verification**: Create `utils.wgsl` with `hash`, `noise`, `fbm` functions. Update `example2.wgsl` to use `// @import "utils.wgsl"` instead of inline functions. Verify hot reload works when editing either file.
 
 ### Phase 10: Windowed Rendering Mode
-- [ ] Add `winit` dependency for cross-platform windowing
-- [ ] Add `--window` / `-w` CLI flag to enable window mode
-- [ ] Create `Renderer` trait to abstract terminal vs window rendering
-- [ ] Implement `WindowRenderer` that renders directly to wgpu surface
-- [ ] Handle window creation, sizing, and event loop integration
-- [ ] Support window resizing with automatic uniform updates
-- [ ] Maintain same keyboard controls (arrows, spacebar, Q/Ctrl+C)
-- [ ] Ensure performance metrics work in both modes
-- [ ] Update file watcher and hot reload to work with window mode
-- [ ] Add window-specific error handling (surface creation, etc.)
 
-**Verification**: Run `shadertui --window example.wgsl` and confirm the shader renders in a resizable window with the same controls and hot reload functionality as terminal mode. Performance metrics should be displayed and window resizing should update shader uniforms.
+- [x] **Phase 10.1: Basic Window Creation and CLI Integration**
+  - [x] Add `winit` dependency to Cargo.toml
+  - [x] Add `--window` / `-w` CLI flag to enable window mode
+  - [x] Create basic window with correct initial size (1280x800 pixels, centered)
+  - [x] Add simple window event loop that can open/close window
+  - [x] Update main.rs to route to window mode vs terminal mode based on CLI flag
+  - [x] Console shows informational messages when windowed mode starts
+
+  **Verification**: Run `shadertui --window example.wgsl` and confirm a window opens at 1280x800 centered, closes with standard window controls.
+
+- [x] **Phase 10.2: WindowRenderer with wgpu Surface Integration**
+  - [x] Create `WindowRenderer` struct in `src/renderers/window_renderer.rs`
+  - [x] Implement wgpu surface creation from winit window (no framebuffer needed)
+  - [x] Create two-stage pipeline: compute shader writes to storage texture, render shader displays it
+  - [x] Add uniform buffer integration for window mode with hardcoded values
+  - [x] Test basic shader rendering in window
+
+  **Verification**: ✅ Window displays actual shader output with pixel-level rendering (not terminal characters). Shader renders correctly with hardcoded uniforms.
+
+- [x] **Phase 10.3: Window Event Handling and Controls**
+  - [x] Implement time uniform with real-time updates and frame counting
+  - [x] Implement window resize handling with automatic uniform resolution updates
+  - [x] Add keyboard input handling for existing controls (arrows, spacebar, Q/Escape)
+  - [x] Integrate mouse position tracking as alternate means to move cursor uniform
+  - [x] Handle window close events properly
+  - [x] Implement proper Y-axis coordinate flipping for intuitive cursor control
+  - [x] Add bounds checking for cursor movement within window dimensions
+
+  **Verification**: ✅ Arrow keys control cursor position in shader with correct directional mapping, spacebar pauses/resumes animation, Q/Escape exits, window resizing updates shader resolution correctly, mouse movement provides real-time cursor control with proper coordinate transformation.
+
+- [x] **Phase 10.4: Performance Monitoring and Hot Reload Integration**
+  - [x] Add performance metrics display to window title bar (FPS, frame drops)
+  - [x] Integrate existing file watcher system with window mode
+  - [x] Ensure hot reload works identical to terminal mode
+  - [x] Add window-specific error handling for surface/GPU issues
+  - [x] Test complete workflow with shader editing
+  - [x] Enhanced shader adaptation with regex-based pattern matching for robust buffer-to-texture conversion
+
+  **Verification**: ✅ Run `shadertui --window --perf example.wgsl`, confirm performance metrics in title bar, edit shader file and see changes hot reload instantly, error handling works for broken shaders. All windowed mode features now have complete feature parity with terminal mode.
 
 ## Example Usage Scenarios
 
@@ -214,6 +242,17 @@ shadertui -w example.wgsl
 
 # Combine window mode with performance monitoring
 shadertui --window --perf complex_shader.wgsl
+
+# Hot reload works with import system in windowed mode
+shadertui -w shaders/test_basic_import.wgsl
+# Edit imported files and see changes instantly
+
+# All controls work in windowed mode:
+# - Arrow keys: Move cursor position
+# - Spacebar: Pause/resume animation  
+# - Q or Escape: Exit
+# - Mouse: Move cursor (alternative to arrow keys)
+# - Window resize: Automatically updates shader resolution
 ```
 
 ## Potential Development Issues
