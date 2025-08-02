@@ -10,6 +10,8 @@ A terminal-based shader development environment that brings GPU-accelerated frag
 - **Interactive controls**: Arrow keys control cursor, spacebar pauses/resumes time
 - **Performance monitoring**: FPS tracking and frame drop counting
 - **Frame rate control**: Configurable terminal refresh rate
+- **WGSL import system**: Modular shader development with `// @import "path"` syntax
+- **Windowed mode**: Full GPU rendering in an OS window as alternative to terminal
 
 ## Installation
 
@@ -29,15 +31,18 @@ shadertui --perf example.wgsl
 # Limit terminal refresh rate
 shadertui --max-fps 30 example.wgsl
 
+# Windowed mode
+shadertui --window example.wgsl
+
 # Combined options
-shadertui --perf --max-fps 10 shader.wgsl
+shadertui --window --perf shader.wgsl
 ```
 
 ### Controls
 
-- **Arrow keys**: Move cursor position
+- **Arrow keys**: Move cursor position (mouse also works in windowed mode)
 - **Spacebar**: Pause/resume time
-- **Q or Ctrl+C**: Exit
+- **Q/Escape or Ctrl+C**: Exit
 
 ### Shader Format
 
@@ -67,6 +72,38 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     output[index] = vec4<f32>(color, 1.0);
 }
 ```
+
+### WGSL Import System
+
+Create modular shaders using import statements:
+
+```wgsl
+// @import "utils.wgsl"
+// @import "noise/perlin.wgsl"
+
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    let uv = get_uv(id); // function from utils.wgsl
+    let noise_val = perlin_noise(uv); // function from perlin.wgsl
+    // ...
+}
+```
+
+Import paths are relative to the importing file. The system tracks dependencies and triggers hot reload when any imported file changes.
+
+### Windowed Mode
+
+Render shaders in a resizable window instead of terminal:
+
+```bash
+# Basic windowed rendering
+shadertui --window shader.wgsl
+
+# With performance monitoring in title bar
+shadertui --window --perf shader.wgsl
+```
+
+Windowed mode provides the same interactive controls and hot reload functionality as terminal mode, with full pixel-level rendering quality.
 
 ## Future Considerations
 
