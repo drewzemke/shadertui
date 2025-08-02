@@ -119,8 +119,10 @@ impl TerminalRenderer {
         for term_y in start_row..self.height as usize {
             for term_x in 0..self.width as usize {
                 // Calculate GPU pixel rows for top and bottom halves of this terminal cell
-                let top_pixel_y = term_y * 2;
-                let bottom_pixel_y = term_y * 2 + 1;
+                // AIDEV-NOTE: Flip Y-axis to match window renderer coordinate system (Y=0 at bottom)
+                let flipped_term_y = (self.height as usize - 1) - term_y;
+                let top_pixel_y = flipped_term_y * 2 + 1;
+                let bottom_pixel_y = flipped_term_y * 2;
 
                 // Get top half color
                 let top_idx = (top_pixel_y * gpu_width as usize + term_x) * 4;
@@ -262,11 +264,13 @@ impl TerminalRenderer {
                         }
                         KeyCode::Up => {
                             let mut uniforms = shared_uniforms.lock().unwrap();
-                            uniforms.move_cursor(0, -1);
+                            // AIDEV-NOTE: Flip Y movement to match window renderer (Y=0 at bottom)
+                            uniforms.move_cursor(0, 1);
                         }
                         KeyCode::Down => {
                             let mut uniforms = shared_uniforms.lock().unwrap();
-                            uniforms.move_cursor(0, 1);
+                            // AIDEV-NOTE: Flip Y movement to match window renderer (Y=0 at bottom)
+                            uniforms.move_cursor(0, -1);
                         }
                         KeyCode::Left => {
                             let mut uniforms = shared_uniforms.lock().unwrap();
