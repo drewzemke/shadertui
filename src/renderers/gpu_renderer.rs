@@ -1,9 +1,12 @@
 use std::time::Instant;
 
 use crate::gpu::{ComputePipeline, GpuBuffers, GpuDevice, UniformBuffer, Uniforms};
-use crate::utils::threading::{
-    DualPerformanceTrackerHandle, ErrorSender, FrameData, SharedFrameBufferHandle,
-    SharedUniformsHandle, ThreadError,
+use crate::utils::{
+    shader_shell::{inject_user_shader, ShellType},
+    threading::{
+        DualPerformanceTrackerHandle, ErrorSender, FrameData, SharedFrameBufferHandle,
+        SharedUniformsHandle, ThreadError,
+    },
 };
 
 // AIDEV-NOTE: GPU renderer runs in dedicated thread for continuous compute
@@ -23,8 +26,11 @@ impl GpuRenderer {
     pub fn new(
         width: u32,
         height: u32,
-        shader_source: &str,
+        user_shader_source: &str,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        // Inject user shader into terminal shell
+        let complete_shader = inject_user_shader(user_shader_source, ShellType::Terminal)?;
+
         // Initialize GPU - double the height for half-cell rendering
         let gpu_device = GpuDevice::new_blocking()?;
         let gpu_buffers = GpuBuffers::new(&gpu_device.device, width, height * 2);
@@ -33,7 +39,7 @@ impl GpuRenderer {
             &gpu_device.device,
             &gpu_buffers,
             &uniform_buffer,
-            shader_source,
+            &complete_shader,
         )?;
 
         let now = Instant::now();
@@ -52,16 +58,19 @@ impl GpuRenderer {
     }
 
     // AIDEV-NOTE: Reload shader with new source, called from compute thread
-    pub fn reload_shader(&mut self, shader_source: &str) -> Result<(), Box<dyn std::error::Error>> {
-        // Validate shader first using existing validation function
-        crate::utils::validation::validate_shader(shader_source)?;
+    pub fn reload_shader(
+        &mut self,
+        user_shader_source: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Inject user shader into terminal shell
+        let complete_shader = inject_user_shader(user_shader_source, ShellType::Terminal)?;
 
         // Create new compute pipeline
         let new_pipeline = ComputePipeline::new(
             &self.gpu_device.device,
             &self.gpu_buffers,
             &self.uniform_buffer,
-            shader_source,
+            &complete_shader,
         )?;
 
         // Replace the old pipeline

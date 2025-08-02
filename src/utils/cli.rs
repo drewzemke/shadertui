@@ -3,7 +3,11 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use crate::utils::{shader_import::process_imports, validation::validate_shader};
+use crate::utils::{
+    shader_import::process_imports,
+    shader_shell::{inject_user_shader, ShellType},
+    validation::validate_shader,
+};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -48,7 +52,7 @@ impl Cli {
             }
         };
 
-        let shader_source = match process_imports(&cli.shader_file, &raw_shader_source) {
+        let user_shader_source = match process_imports(&cli.shader_file, &raw_shader_source) {
             Ok((processed, _deps)) => processed,
             Err(e) => {
                 eprintln!("Import processing error: {e}");
@@ -56,13 +60,25 @@ impl Cli {
             }
         };
 
-        // Validate shader compilation before proceeding
-        if let Err(e) = validate_shader(&shader_source) {
+        // Inject user shader into terminal shell for validation (use terminal as default)
+        let complete_shader_for_validation =
+            match inject_user_shader(&user_shader_source, ShellType::Terminal) {
+                Ok(complete) => complete,
+                Err(e) => {
+                    eprintln!("Shader shell injection error: {e}");
+                    std::process::exit(1);
+                }
+            };
+
+        // Validate the complete injected shader
+        if let Err(e) = validate_shader(&complete_shader_for_validation) {
             eprintln!("Shader compilation error: {e}");
             std::process::exit(1);
         }
 
-        Ok((cli, shader_source))
+        // Return the original user shader source (not the injected version)
+        // Renderers will do their own injection with appropriate shell type
+        Ok((cli, user_shader_source))
     }
 
     pub fn is_windowed_mode(&self) -> bool {

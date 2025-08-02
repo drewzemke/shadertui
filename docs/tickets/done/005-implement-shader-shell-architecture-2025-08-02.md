@@ -52,9 +52,17 @@ ${USER_SHADER_CODE}
 - `shaders/example.wgsl` - Convert to new format
 
 ### Validation Approach
+**Strategy**: Construct complete shader before validation in CLI parsing (Option 1)
+- Create shell template constants/functions in shared module
+- Add shell injection function that combines user code + appropriate shell  
+- Update CLI parsing to inject shells before validation at `src/utils/cli.rs:60`
+- Both renderers use same injection logic for consistency
+
 During compilation, check that user shader contains:
 - `fn compute_color(uv: vec2<f32>) -> vec3<f32>` function signature
 - No conflicting global declarations
+
+This provides early error detection with clear feedback while validating the actual complete shader that will run.
 
 ## Definition of Done
 

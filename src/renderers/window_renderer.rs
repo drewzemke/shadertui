@@ -2,7 +2,10 @@ use std::time::Instant;
 use wgpu;
 
 use crate::gpu::{GpuDevice, UniformBuffer, Uniforms};
-use crate::utils::threading::PerformanceTracker;
+use crate::utils::{
+    shader_shell::{get_window_display_shader, inject_user_shader, ShellType},
+    threading::PerformanceTracker,
+};
 
 // AIDEV-NOTE: WindowRenderer uses compute+render pipeline: compute shader writes to texture, fragment shader displays it
 pub struct WindowRenderer {
@@ -96,7 +99,7 @@ impl WindowRenderer {
         let uniform_buffer = UniformBuffer::new(&gpu_device.device);
         let uniforms = Uniforms {
             resolution: [width as f32, height as f32],
-            cursor: [width as f32 / 2.0, height as f32 / 2.0],
+            cursor: [0.0, 0.0],
             time: 0.0,
             frame: 0,
             delta_time: 0.0,
@@ -123,10 +126,10 @@ impl WindowRenderer {
         let storage_texture_view =
             storage_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Create compute pipeline with modified shader (write to texture instead of buffer)
-        let modified_shader_source = Self::adapt_shader_for_texture(shader_source);
+        // Create compute pipeline with injected user shader in window shell
+        let complete_shader = inject_user_shader(shader_source, ShellType::Window)?;
         let (compute_pipeline, compute_bind_group_layout) =
-            Self::create_compute_pipeline(&gpu_device.device, &modified_shader_source)?;
+            Self::create_compute_pipeline(&gpu_device.device, &complete_shader)?;
 
         // Create compute bind group
         let compute_bind_group = gpu_device
@@ -180,7 +183,7 @@ impl WindowRenderer {
             start_time: now,
             last_frame_time: now,
             frame_count: 0,
-            cursor_position: [width as f32 / 2.0, height as f32 / 2.0],
+            cursor_position: [0.0, 0.0],
             is_paused: false,
             paused_time: 0.0,
             performance_tracker: if enable_performance_tracking {
@@ -189,34 +192,6 @@ impl WindowRenderer {
                 None
             },
         })
-    }
-
-    fn adapt_shader_for_texture(shader_source: &str) -> String {
-        // AIDEV-NOTE: More robust adaptation - replace storage buffer with storage texture
-        use regex::Regex;
-
-        let mut adapted = shader_source.to_string();
-
-        // Replace the storage buffer declaration with texture
-        adapted = adapted.replace(
-            "@group(0) @binding(0) var<storage, read_write> output: array<vec4<f32>>;",
-            "@group(0) @binding(0) var output_texture: texture_storage_2d<rgba8unorm, write>;",
-        );
-
-        // Replace any output[index] = ... pattern with textureStore
-        let output_pattern = Regex::new(r"output\[index\]\s*=\s*(.*?);").unwrap();
-        adapted = output_pattern.replace_all(&adapted, |caps: &regex::Captures| {
-            let value = &caps[1];
-            format!("textureStore(output_texture, vec2<i32>(i32(coords.x), i32(coords.y)), {value});")
-        }).to_string();
-
-        // Remove index calculation lines
-        let index_pattern = Regex::new(r"let index = u32\(.*?\);").unwrap();
-        adapted = index_pattern
-            .replace_all(&adapted, "// No index needed for texture storage")
-            .to_string();
-
-        adapted
     }
 
     fn create_compute_pipeline(
@@ -284,38 +259,8 @@ impl WindowRenderer {
         sampler: &wgpu::Sampler,
         surface_format: wgpu::TextureFormat,
     ) -> Result<(wgpu::RenderPipeline, wgpu::BindGroup), Box<dyn std::error::Error>> {
-        // Simple shaders that sample from the storage texture
-        let shader_source = r#"
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-}
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-    // Generate fullscreen triangle that covers entire screen
-    // Vertices: (-1,-1), (3,-1), (-1,3) - this creates a triangle that covers the whole screen
-    var vertices = array<vec2<f32>, 3>(
-        vec2<f32>(-1.0, -1.0),
-        vec2<f32>( 3.0, -1.0),
-        vec2<f32>(-1.0,  3.0)
-    );
-    
-    let position = vertices[vertex_index];
-    var out: VertexOutput;
-    out.clip_position = vec4<f32>(position, 0.0, 1.0);
-    out.uv = (position + 1.0) * 0.5;
-    return out;
-}
-
-@group(0) @binding(0) var storage_texture: texture_2d<f32>;
-@group(0) @binding(1) var texture_sampler: sampler;
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return textureSample(storage_texture, texture_sampler, in.uv);
-}
-        "#;
+        // Use the window display shader from template file
+        let shader_source = get_window_display_shader();
 
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Render Shader"),
@@ -544,11 +489,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // AIDEV-NOTE: Hot reload method for shader recompilation
-    pub fn reload_shader(&mut self, shader_source: &str) -> Result<(), Box<dyn std::error::Error>> {
-        // Create new compute pipeline with updated shader
-        let modified_shader_source = Self::adapt_shader_for_texture(shader_source);
+    pub fn reload_shader(
+        &mut self,
+        user_shader_source: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Create new compute pipeline with injected user shader in window shell
+        let complete_shader = inject_user_shader(user_shader_source, ShellType::Window)?;
         let (new_compute_pipeline, compute_bind_group_layout) =
-            Self::create_compute_pipeline(&self.gpu_device.device, &modified_shader_source)?;
+            Self::create_compute_pipeline(&self.gpu_device.device, &complete_shader)?;
 
         // Update compute pipeline
         self.compute_pipeline = new_compute_pipeline;

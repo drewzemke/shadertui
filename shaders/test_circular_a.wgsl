@@ -1,28 +1,17 @@
-@group(0) @binding(0) var<storage, read_write> output: array<vec4<f32>>;
-@group(0) @binding(1) var<uniform> uniforms: Uniforms;
-
-struct Uniforms {
-    resolution: vec2<f32>,
-    cursor: vec2<f32>,
-    time: f32,
-    frame: u32,
-    delta_time: f32,
-    _padding: f32,
-}
+// Test shader demonstrating circular import detection (A imports B)
+//
+// Available uniforms (automatically provided by shell):
+//   uniforms.resolution: vec2<f32>  - Screen resolution (width, height in pixels)  
+//   uniforms.cursor: vec2<f32>      - Cursor position (x, y in pixels)
+//   uniforms.time: f32              - Time since start (seconds)
+//   uniforms.frame: u32             - Frame number since start
+//   uniforms.delta_time: f32        - Time since last frame (seconds)
+//
+// Your compute_color function receives:
+//   uv: vec2<f32> - Normalized coordinates (0.0 to 1.0)
 
 // @import "test_circular_b.wgsl"
 
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    let coords = vec2<f32>(f32(id.x), f32(id.y));
-    
-    if (coords.x >= uniforms.resolution.x || coords.y >= uniforms.resolution.y) {
-        return;
-    }
-    
-    let uv = coords / uniforms.resolution;
-    let color = function_from_b(uv);
-    
-    let index = u32(coords.y * uniforms.resolution.x + coords.x);
-    output[index] = vec4<f32>(color, 1.0);
+fn compute_color(uv: vec2<f32>) -> vec3<f32> {
+    return function_from_b(uv);
 }

@@ -2,6 +2,7 @@ pub mod cli;
 pub mod multi_file_watcher;
 pub mod screen;
 pub mod shader_import;
+pub mod shader_shell;
 pub mod threading;
 pub mod validation;
 
