@@ -12,3 +12,18 @@ pub fn validate_shader(shader_source: &str) -> Result<(), Box<dyn std::error::Er
 
     Ok(())
 }
+
+// AIDEV-NOTE: Validate user shader for hot reload by injecting into shell and validating complete shader
+pub fn validate_user_shader_for_reload(
+    user_shader_source: &str,
+    shell_type: crate::utils::shader_shell::ShellType,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Inject user shader into appropriate shell
+    let complete_shader =
+        crate::utils::shader_shell::inject_user_shader(user_shader_source, shell_type)?;
+
+    // Validate the complete injected shader
+    validate_shader(&complete_shader)?;
+
+    Ok(())
+}

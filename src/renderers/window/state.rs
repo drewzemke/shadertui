@@ -27,10 +27,10 @@ impl WindowState {
     pub fn update_cursor_position(&mut self, x: f32, y: f32, height: u32) {
         // Store cursor in pixel coordinates, flipping Y axis (window Y=0 at top, shader Y=0 at bottom)
         self.cursor_position = [x, height as f32 - y];
-        println!(
-            "Updated cursor: ({x:.3}, {y:.3}) -> flipped: ({:.3}, {:.3})",
-            self.cursor_position[0], self.cursor_position[1]
-        );
+        // println!(
+        //     "Updated cursor: ({x:.3}, {y:.3}) -> flipped: ({:.3}, {:.3})",
+        //     self.cursor_position[0], self.cursor_position[1]
+        // );
     }
 
     pub fn toggle_pause(&mut self) {

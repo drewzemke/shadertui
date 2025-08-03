@@ -86,19 +86,33 @@ impl WindowedApp {
                                 }
                                 self.dependency_info = Some(deps);
 
-                                // Attempt shader reload
-                                if let Some(renderer) = &mut self.renderer {
-                                    match renderer.reload_shader(&processed_shader_source) {
-                                        Ok(()) => {
-                                            self.error_state = None;
-                                            println!("Shader reloaded successfully");
-                                            return true;
+                                // Validate user shader before attempting reload
+                                match crate::utils::validation::validate_user_shader_for_reload(
+                                    &processed_shader_source,
+                                    crate::utils::shader_shell::ShellType::Window,
+                                ) {
+                                    Ok(()) => {
+                                        // Attempt shader reload
+                                        if let Some(renderer) = &mut self.renderer {
+                                            match renderer.reload_shader(&processed_shader_source) {
+                                                Ok(()) => {
+                                                    self.error_state = None;
+                                                    println!("Shader reloaded successfully");
+                                                    return true;
+                                                }
+                                                Err(e) => {
+                                                    let error_msg =
+                                                        format!("Compilation error: {e}");
+                                                    self.error_state = Some(error_msg.clone());
+                                                    eprintln!("{error_msg}");
+                                                }
+                                            }
                                         }
-                                        Err(e) => {
-                                            let error_msg = format!("Compilation error: {e}");
-                                            self.error_state = Some(error_msg.clone());
-                                            eprintln!("{error_msg}");
-                                        }
+                                    }
+                                    Err(e) => {
+                                        let error_msg = format!("Shader validation error: {e}");
+                                        self.error_state = Some(error_msg.clone());
+                                        eprintln!("{error_msg}");
                                     }
                                 }
                             }

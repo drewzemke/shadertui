@@ -56,12 +56,21 @@ impl TerminalRenderer {
                 // Process imports before reloading
                 match process_imports(shader_file, &raw_shader_source) {
                     Ok((processed_shader_source, deps)) => {
-                        // Request shader reload via shared uniforms
-                        {
-                            let mut uniforms = shared_uniforms.lock().unwrap();
-                            uniforms.request_shader_reload(processed_shader_source);
+                        // Validate user shader before requesting reload
+                        match crate::utils::validation::validate_user_shader_for_reload(
+                            &processed_shader_source,
+                            crate::utils::shader_shell::ShellType::Terminal,
+                        ) {
+                            Ok(()) => {
+                                // Request shader reload via shared uniforms
+                                {
+                                    let mut uniforms = shared_uniforms.lock().unwrap();
+                                    uniforms.request_shader_reload(processed_shader_source);
+                                }
+                                Ok(deps)
+                            }
+                            Err(e) => Err(format!("Shader validation error: {e}")),
                         }
-                        Ok(deps)
                     }
                     Err(e) => Err(format!("Import processing error: {e}")),
                 }
