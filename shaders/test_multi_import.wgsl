@@ -8,12 +8,15 @@
 //   uniforms.delta_time: f32        - Time since last frame (seconds)
 //
 // Your compute_color function receives:
-//   uv: vec2<f32> - Normalized coordinates (0.0 to 1.0)
+//   coords: vec2<f32> - Unnormalized screen coordinates (0.0 to resolution)
 
 // @import "utils.wgsl"
 // @import "math.wgsl"
 
-fn compute_color(uv: vec2<f32>) -> vec3<f32> {
+fn compute_color(coords: vec2<f32>) -> vec3<f32> {
+    // Create normalized coordinates (0-1)
+    let uv = coords / uniforms.resolution;
+    
     let centered_uv = uv - 0.5;
     
     let rotated_uv = rotate2d(uniforms.time * 0.5) * centered_uv;

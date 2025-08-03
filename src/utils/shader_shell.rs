@@ -24,7 +24,7 @@ impl fmt::Display for ShaderShellError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ShaderShellError::MissingComputeColorFunction => {
-                write!(f, "User shader must contain 'fn compute_color(uv: vec2<f32>) -> vec3<f32>' function")
+                write!(f, "User shader must contain 'fn compute_color(coords: vec2<f32>) -> vec3<f32>' function")
             }
             ShaderShellError::InjectionMarkerNotFound => {
                 write!(f, "Shell template is missing injection marker")
@@ -38,7 +38,7 @@ impl Error for ShaderShellError {}
 // AIDEV-NOTE: Validate that user shader contains required compute_color function
 pub fn validate_user_shader(user_shader: &str) -> Result<(), ShaderShellError> {
     // Check for compute_color function signature
-    if !user_shader.contains("fn compute_color(uv: vec2<f32>) -> vec3<f32>") {
+    if !user_shader.contains("fn compute_color(coords: vec2<f32>) -> vec3<f32>") {
         return Err(ShaderShellError::MissingComputeColorFunction);
     }
     Ok(())
@@ -81,7 +81,8 @@ mod tests {
     #[test]
     fn test_validate_user_shader_valid() {
         let valid_shader = r#"
-            fn compute_color(uv: vec2<f32>) -> vec3<f32> {
+            fn compute_color(coords: vec2<f32>) -> vec3<f32> {
+                let uv = coords / uniforms.resolution;
                 return vec3<f32>(uv.x, uv.y, 0.5);
             }
         "#;
@@ -104,7 +105,8 @@ mod tests {
     #[test]
     fn test_inject_user_shader_terminal() {
         let user_shader = r#"
-            fn compute_color(uv: vec2<f32>) -> vec3<f32> {
+            fn compute_color(coords: vec2<f32>) -> vec3<f32> {
+                let uv = coords / uniforms.resolution;
                 return vec3<f32>(uv.x, uv.y, 0.5);
             }
         "#;
@@ -114,14 +116,15 @@ mod tests {
 
         let complete_shader = result.unwrap();
         assert!(complete_shader.contains("@group(0) @binding(0) var<storage, read_write> output"));
-        assert!(complete_shader.contains("fn compute_color(uv: vec2<f32>) -> vec3<f32>"));
+        assert!(complete_shader.contains("fn compute_color(coords: vec2<f32>) -> vec3<f32>"));
         assert!(!complete_shader.contains(USER_INJECTION_MARKER));
     }
 
     #[test]
     fn test_inject_user_shader_window() {
         let user_shader = r#"
-            fn compute_color(uv: vec2<f32>) -> vec3<f32> {
+            fn compute_color(coords: vec2<f32>) -> vec3<f32> {
+                let uv = coords / uniforms.resolution;
                 return vec3<f32>(uv.x, uv.y, 0.5);
             }
         "#;
@@ -132,7 +135,7 @@ mod tests {
         let complete_shader = result.unwrap();
         assert!(complete_shader
             .contains("@group(0) @binding(0) var output_texture: texture_storage_2d"));
-        assert!(complete_shader.contains("fn compute_color(uv: vec2<f32>) -> vec3<f32>"));
+        assert!(complete_shader.contains("fn compute_color(coords: vec2<f32>) -> vec3<f32>"));
         assert!(!complete_shader.contains(USER_INJECTION_MARKER));
     }
 }

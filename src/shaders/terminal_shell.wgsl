@@ -21,11 +21,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
     
-    // Create normalized coordinates (0-1)
-    let uv = coords / uniforms.resolution;
-    
-    // Call user's compute_color function
-    let final_color = compute_color(uv);
+    // Call user's compute_color function with unnormalized coordinates
+    let final_color = compute_color(coords);
     
     // Write to output buffer
     let index = u32(coords.y * uniforms.resolution.x + coords.x);

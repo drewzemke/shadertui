@@ -46,32 +46,28 @@ shadertui --window --perf shader.wgsl
 
 ### Shader Format
 
-Write WGSL compute shaders with this structure:
+Write user shaders by implementing a simple color computation function:
 
 ```wgsl
-@group(0) @binding(0) var<storage, read_write> output: array<vec4<f32>>;
-@group(0) @binding(1) var<uniform> uniforms: Uniforms;
+// Available uniforms (automatically provided):
+//   uniforms.resolution: vec2<f32>  - Screen resolution (width, height in pixels)  
+//   uniforms.cursor: vec2<f32>      - Cursor position (x, y in pixels)
+//   uniforms.time: f32              - Time since start (seconds)
+//   uniforms.frame: u32             - Frame number since start
+//   uniforms.delta_time: f32        - Time since last frame (seconds)
 
-struct Uniforms {
-    resolution: vec2<f32>,    // Terminal resolution (cols, rows*2)
-    time: f32,               // Seconds since start
-    cursor: vec2<f32>,       // Normalized cursor position (0-1)
-    frame: u32,              // Frame number
-    delta_time: f32,         // Time since last frame
-}
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    let coords = vec2<f32>(f32(id.x), f32(id.y));
+fn compute_color(coords: vec2<f32>) -> vec3<f32> {
+    // Create normalized coordinates (0-1) if needed
     let uv = coords / uniforms.resolution;
     
-    // Your shader code here
+    // Your shader logic here
     let color = vec3<f32>(uv.x, uv.y, sin(uniforms.time));
     
-    let index = id.y * u32(uniforms.resolution.x) + id.x;
-    output[index] = vec4<f32>(color, 1.0);
+    return color;
 }
 ```
+
+The system automatically handles GPU buffer management, coordinate systems, and renderer differences. 
 
 ### WGSL Import System
 

@@ -8,11 +8,14 @@
 //   uniforms.delta_time: f32        - Time since last frame (seconds)
 //
 // Your compute_color function receives:
-//   uv: vec2<f32> - Normalized coordinates (0.0 to 1.0)
+//   coords: vec2<f32> - Unnormalized screen coordinates (0.0 to resolution)
 
 // @import "utils.wgsl"
 
-fn compute_color(uv: vec2<f32>) -> vec3<f32> {
+fn compute_color(coords: vec2<f32>) -> vec3<f32> {
+    // Create normalized coordinates (0-1)
+    let uv = coords / uniforms.resolution;
+    
     let noise_value = noise(uv * 8.0 + uniforms.time * 0.5);
     return vec3<f32>(noise_value, noise_value * 0.8, noise_value * 0.6);
 }
