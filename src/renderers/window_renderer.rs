@@ -1,39 +1,31 @@
-use std::time::Instant;
+use std::sync::Arc;
 use wgpu;
 
 use crate::gpu::{GpuDevice, UniformBuffer, Uniforms};
-use crate::utils::{
-    shader_shell::{get_window_display_shader, inject_user_shader, ShellType},
-    threading::PerformanceTracker,
-};
+use crate::utils::threading::PerformanceTracker;
+
+use super::window::{GpuResourceManager, PipelineFactory, SurfaceManager, WindowState};
 
 // AIDEV-NOTE: WindowRenderer uses compute+render pipeline: compute shader writes to texture, fragment shader displays it
 pub struct WindowRenderer {
-    surface: wgpu::Surface<'static>,
+    surface_manager: SurfaceManager,
+    resource_manager: GpuResourceManager,
 
     // Compute stage: user's shader writes to storage texture
     compute_pipeline: wgpu::ComputePipeline,
     compute_bind_group: wgpu::BindGroup,
+    compute_bind_group_layout: wgpu::BindGroupLayout,
     uniform_buffer: UniformBuffer,
 
     // Render stage: simple fragment shader samples from storage texture
     render_pipeline: wgpu::RenderPipeline,
     render_bind_group: wgpu::BindGroup,
+    render_bind_group_layout: wgpu::BindGroupLayout,
 
     gpu_device: GpuDevice,
-    adapter: wgpu::Adapter,
+    state: WindowState,
     width: u32,
     height: u32,
-
-    // Time tracking for uniform updates
-    start_time: Instant,
-    last_frame_time: Instant,
-    frame_count: u32,
-
-    // Input state
-    cursor_position: [f32; 2],
-    is_paused: bool,
-    paused_time: f32,
 
     // Performance tracking
     performance_tracker: Option<PerformanceTracker>,
@@ -65,37 +57,18 @@ impl WindowRenderer {
             }))?;
 
         let gpu_device = GpuDevice { device, queue };
-
-        // Use provided window size
         let width = window_size.0;
         let height = window_size.1;
 
+        // Initialize utility managers
+        let surface_manager = SurfaceManager::new(surface, adapter);
+        let resource_manager = GpuResourceManager::new(Arc::new(gpu_device.device.clone()));
+
         // Configure surface
-        let surface_caps = surface.get_capabilities(&adapter);
-        let surface_format = surface_caps
-            .formats
-            .iter()
-            .copied()
-            .find(|f| f.is_srgb())
-            .unwrap_or(surface_caps.formats[0]);
+        let surface_format = surface_manager.get_optimal_format();
+        surface_manager.configure(&gpu_device.device, width, height);
 
-        let surface_config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
-            width,
-            height,
-            present_mode: surface_caps.present_modes[0],
-            alpha_mode: surface_caps.alpha_modes[0],
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-
-        surface.configure(&gpu_device.device, &surface_config);
-
-        // Initialize time tracking
-        let now = Instant::now();
-
-        // Create uniform buffer - will be updated each frame
+        // Create uniform buffer
         let uniform_buffer = UniformBuffer::new(&gpu_device.device);
         let uniforms = Uniforms {
             resolution: [width as f32, height as f32],
@@ -107,85 +80,47 @@ impl WindowRenderer {
         };
         uniform_buffer.update(&gpu_device.queue, &uniforms);
 
-        // Create storage texture for compute shader output
-        let storage_texture = gpu_device.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Storage Texture"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-
+        // Create GPU resources
+        let storage_texture = resource_manager.create_storage_texture(width, height);
         let storage_texture_view =
             storage_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = resource_manager.create_sampler();
 
-        // Create compute pipeline with injected user shader in window shell
-        let complete_shader = inject_user_shader(shader_source, ShellType::Window)?;
+        // Create pipelines
         let (compute_pipeline, compute_bind_group_layout) =
-            Self::create_compute_pipeline(&gpu_device.device, &complete_shader)?;
+            PipelineFactory::create_compute_pipeline_with_user_shader(
+                &gpu_device.device,
+                shader_source,
+            )?;
+        let (render_pipeline, render_bind_group_layout) =
+            PipelineFactory::create_render_pipeline(&gpu_device.device, surface_format)?;
 
-        // Create compute bind group
-        let compute_bind_group = gpu_device
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Compute Bind Group"),
-                layout: &compute_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&storage_texture_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: uniform_buffer.buffer.as_entire_binding(),
-                    },
-                ],
-            });
-
-        // Create sampler for texture sampling
-        let sampler = gpu_device.device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Storage Texture Sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
-
-        // Create render pipeline (samples from storage texture)
-        let (render_pipeline, render_bind_group) = Self::create_render_pipeline(
-            &gpu_device.device,
+        // Create bind groups
+        let compute_bind_group = resource_manager.create_compute_bind_group(
+            &compute_bind_group_layout,
+            &storage_texture_view,
+            &uniform_buffer,
+        );
+        let render_bind_group = resource_manager.create_render_bind_group(
+            &render_bind_group_layout,
             &storage_texture_view,
             &sampler,
-            surface_format,
-        )?;
+        );
 
         Ok(Self {
-            surface,
+            surface_manager,
+            resource_manager,
             compute_pipeline,
             compute_bind_group,
+            compute_bind_group_layout,
             uniform_buffer,
             render_pipeline,
             render_bind_group,
+            render_bind_group_layout,
             gpu_device,
-            adapter,
+            state: WindowState::new(),
             width,
             height,
-            start_time: now,
-            last_frame_time: now,
-            frame_count: 0,
-            cursor_position: [0.0, 0.0],
-            is_paused: false,
-            paused_time: 0.0,
             performance_tracker: if enable_performance_tracking {
                 Some(PerformanceTracker::new())
             } else {
@@ -194,289 +129,40 @@ impl WindowRenderer {
         })
     }
 
-    fn create_compute_pipeline(
-        device: &wgpu::Device,
-        shader_source: &str,
-    ) -> Result<(wgpu::ComputePipeline, wgpu::BindGroupLayout), Box<dyn std::error::Error>> {
-        // Create shader module
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Compute Shader"),
-            source: wgpu::ShaderSource::Wgsl(shader_source.into()),
-        });
-
-        // Create bind group layout
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Compute Bind Group Layout"),
-            entries: &[
-                // Storage texture for output
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::StorageTexture {
-                        access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                    },
-                    count: None,
-                },
-                // Uniform buffer
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        // Create pipeline layout
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Compute Pipeline Layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        // Create compute pipeline
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Compute Pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader_module,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
-
-        Ok((pipeline, bind_group_layout))
-    }
-
-    fn create_render_pipeline(
-        device: &wgpu::Device,
-        storage_texture_view: &wgpu::TextureView,
-        sampler: &wgpu::Sampler,
-        surface_format: wgpu::TextureFormat,
-    ) -> Result<(wgpu::RenderPipeline, wgpu::BindGroup), Box<dyn std::error::Error>> {
-        // Use the window display shader from template file
-        let shader_source = get_window_display_shader();
-
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Render Shader"),
-            source: wgpu::ShaderSource::Wgsl(shader_source.into()),
-        });
-
-        // Create bind group layout
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Render Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-        // Create bind group
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Render Bind Group"),
-            layout: &bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(storage_texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(sampler),
-                },
-            ],
-        });
-
-        // Create render pipeline
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader_module,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader_module,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                unclipped_depth: false,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-            cache: None,
-        });
-
-        Ok((render_pipeline, bind_group))
-    }
-
     // AIDEV-NOTE: Public methods for controlling renderer state from event loop
     pub fn update_cursor_position(&mut self, x: f32, y: f32) {
-        // Store cursor in pixel coordinates, flipping Y axis (window Y=0 at top, shader Y=0 at bottom)
-        self.cursor_position = [x, self.height as f32 - y];
-        println!(
-            "Updated cursor: ({x:.3}, {y:.3}) -> flipped: ({:.3}, {:.3})",
-            self.cursor_position[0], self.cursor_position[1]
-        );
+        self.state.update_cursor_position(x, y, self.height);
     }
 
     pub fn toggle_pause(&mut self) {
-        if self.is_paused {
-            // Resume: adjust start time to account for pause duration
-            let pause_duration = Instant::now().duration_since(self.last_frame_time);
-            self.start_time += pause_duration;
-            self.is_paused = false;
-        } else {
-            // Pause: store current time
-            self.paused_time = Instant::now().duration_since(self.start_time).as_secs_f32();
-            self.is_paused = true;
-        }
+        self.state.toggle_pause();
     }
 
     pub fn resize(&mut self, width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
         self.width = width;
         self.height = height;
 
-        // Reconfigure surface using stored adapter
-        let surface_caps = self.surface.get_capabilities(&self.adapter);
-        let surface_format = surface_caps
-            .formats
-            .iter()
-            .copied()
-            .find(|f| f.is_srgb())
-            .unwrap_or(surface_caps.formats[0]);
+        // Reconfigure surface
+        self.surface_manager
+            .configure(&self.gpu_device.device, width, height);
 
-        let surface_config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
-            width,
-            height,
-            present_mode: surface_caps.present_modes[0],
-            alpha_mode: surface_caps.alpha_modes[0],
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-
-        self.surface
-            .configure(&self.gpu_device.device, &surface_config);
-
-        // Recreate storage texture with new size
-        let storage_texture = self
-            .gpu_device
-            .device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some("Storage Texture"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
-                usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            });
-
+        // Recreate GPU resources with new size
+        let storage_texture = self.resource_manager.create_storage_texture(width, height);
         let storage_texture_view =
             storage_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = self.resource_manager.create_sampler();
 
-        // Update compute bind group with new texture
-        self.compute_bind_group =
-            self.gpu_device
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Compute Bind Group"),
-                    layout: &self.compute_pipeline.get_bind_group_layout(0),
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(&storage_texture_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: self.uniform_buffer.buffer.as_entire_binding(),
-                        },
-                    ],
-                });
-
-        // Update render bind group with new texture
-        let sampler = self
-            .gpu_device
-            .device
-            .create_sampler(&wgpu::SamplerDescriptor {
-                label: Some("Storage Texture Sampler"),
-                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                address_mode_w: wgpu::AddressMode::ClampToEdge,
-                mag_filter: wgpu::FilterMode::Nearest,
-                min_filter: wgpu::FilterMode::Nearest,
-                mipmap_filter: wgpu::FilterMode::Nearest,
-                ..Default::default()
-            });
-
-        self.render_bind_group =
-            self.gpu_device
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Render Bind Group"),
-                    layout: &self.render_pipeline.get_bind_group_layout(0),
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(&storage_texture_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Sampler(&sampler),
-                        },
-                    ],
-                });
+        // Update bind groups with new texture
+        self.compute_bind_group = self.resource_manager.create_compute_bind_group(
+            &self.compute_bind_group_layout,
+            &storage_texture_view,
+            &self.uniform_buffer,
+        );
+        self.render_bind_group = self.resource_manager.create_render_bind_group(
+            &self.render_bind_group_layout,
+            &storage_texture_view,
+            &sampler,
+        );
 
         Ok(())
     }
@@ -493,119 +179,58 @@ impl WindowRenderer {
         &mut self,
         user_shader_source: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Create new compute pipeline with injected user shader in window shell
-        let complete_shader = inject_user_shader(user_shader_source, ShellType::Window)?;
-        let (new_compute_pipeline, compute_bind_group_layout) =
-            Self::create_compute_pipeline(&self.gpu_device.device, &complete_shader)?;
+        // Create new compute pipeline with injected user shader
+        let (new_compute_pipeline, new_compute_bind_group_layout) =
+            PipelineFactory::create_compute_pipeline_with_user_shader(
+                &self.gpu_device.device,
+                user_shader_source,
+            )?;
 
-        // Update compute pipeline
+        // Update compute pipeline and layout
         self.compute_pipeline = new_compute_pipeline;
+        self.compute_bind_group_layout = new_compute_bind_group_layout;
 
-        // Recreate compute bind group with new pipeline layout
+        // Recreate GPU resources
         let storage_texture = self
-            .gpu_device
-            .device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some("Storage Texture"),
-                size: wgpu::Extent3d {
-                    width: self.width,
-                    height: self.height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
-                usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            });
-
+            .resource_manager
+            .create_storage_texture(self.width, self.height);
         let storage_texture_view =
             storage_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = self.resource_manager.create_sampler();
 
-        // Update compute bind group
-        self.compute_bind_group =
-            self.gpu_device
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Compute Bind Group"),
-                    layout: &compute_bind_group_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(&storage_texture_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: self.uniform_buffer.buffer.as_entire_binding(),
-                        },
-                    ],
-                });
-
-        // Update render bind group with new texture
-        let sampler = self
-            .gpu_device
-            .device
-            .create_sampler(&wgpu::SamplerDescriptor {
-                label: Some("Storage Texture Sampler"),
-                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                address_mode_w: wgpu::AddressMode::ClampToEdge,
-                mag_filter: wgpu::FilterMode::Nearest,
-                min_filter: wgpu::FilterMode::Nearest,
-                mipmap_filter: wgpu::FilterMode::Nearest,
-                ..Default::default()
-            });
-
-        self.render_bind_group =
-            self.gpu_device
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Render Bind Group"),
-                    layout: &self.render_pipeline.get_bind_group_layout(0),
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(&storage_texture_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Sampler(&sampler),
-                        },
-                    ],
-                });
+        // Update bind groups with new resources
+        self.compute_bind_group = self.resource_manager.create_compute_bind_group(
+            &self.compute_bind_group_layout,
+            &storage_texture_view,
+            &self.uniform_buffer,
+        );
+        self.render_bind_group = self.resource_manager.create_render_bind_group(
+            &self.render_bind_group_layout,
+            &storage_texture_view,
+            &sampler,
+        );
 
         Ok(())
     }
 
     pub fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Update time and uniforms
-        let current_time = Instant::now();
-        let delta_time = current_time
-            .duration_since(self.last_frame_time)
-            .as_secs_f32();
-        self.last_frame_time = current_time;
-
-        let time = if self.is_paused {
-            self.paused_time
-        } else {
-            current_time.duration_since(self.start_time).as_secs_f32()
-        };
-
-        self.frame_count += 1;
+        // Update time and uniforms using state manager
+        let delta_time = self.state.update_frame_timing();
+        let time = self.state.get_current_time();
 
         // Update uniform buffer
         let uniforms = Uniforms {
             resolution: [self.width as f32, self.height as f32],
-            cursor: self.cursor_position,
+            cursor: self.state.cursor_position,
             time,
-            frame: self.frame_count,
+            frame: self.state.frame_count,
             delta_time,
             _padding: 0.0,
         };
         self.uniform_buffer
             .update(&self.gpu_device.queue, &uniforms);
-        let output = self.surface.get_current_texture()?;
+
+        let output = self.surface_manager.get_current_texture()?;
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
