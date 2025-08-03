@@ -37,11 +37,12 @@ impl TerminalRenderer {
         }
     }
 
-    // AIDEV-NOTE: Helper function for RGB conversion
+    // AIDEV-NOTE: Helper function for RGB conversion with gamma correction
     fn float_rgb_to_u8(&self, r: f32, g: f32, b: f32) -> (u8, u8, u8) {
-        let r = (r * 255.0) as u8;
-        let g = (g * 255.0) as u8;
-        let b = (b * 255.0) as u8;
+        // Apply gamma correction to match window renderer (linear -> sRGB)
+        let r = (r.powf(1.0 / 2.2) * 255.0) as u8;
+        let g = (g.powf(1.0 / 2.2) * 255.0) as u8;
+        let b = (b.powf(1.0 / 2.2) * 255.0) as u8;
         (r, g, b)
     }
 
